@@ -55,7 +55,8 @@ nav a{padding:6px 12px;border-radius:8px;color:var(--muted);text-decoration:none
 nav a[aria-current]{background:var(--ink);color:var(--ground)}
 nav a:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .bar{align-items:center}
-.styles{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+.styles{grid-template-columns:repeat(4,minmax(0,1fr))!important}
+@media (max-width:460px){.styles{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
 .vidrow{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .vidrow video{max-width:260px;border-radius:6px;border:1px solid var(--line)}
 /* hero */
@@ -222,7 +223,8 @@ html{-webkit-text-size-adjust:100%}body{margin:0}img{max-width:100%}[hidden]{dis
       <div class="step">
         <div class="step-h"><span class="mono">02</span>Style</div>
         <div class="levels styles" id="styles" role="radiogroup" aria-label="Drawing style">
-          <div class="lv"><input type="radio" name="style" id="st_ell" value="ellipses" checked><label for="st_ell"><b>Colour</b><small>soft ellipses,</small><small>every pixel in rgb</small></label></div>
+          <div class="lv"><input type="radio" name="style" id="st_cmp" value="compact"><label for="st_cmp"><b>Compact</b><small>a few named parts;</small><small>simple subjects only</small></label></div>
+          <div class="lv"><input type="radio" name="style" id="st_ell" value="ellipses" checked><label for="st_ell"><b>Detailed</b><small>many soft ellipses,</small><small>every pixel in rgb</small></label></div>
           <div class="lv"><input type="radio" name="style" id="st_lin" value="lines"><label for="st_lin"><b>Lines</b><small>thousands of thin</small><small>segments in ink</small></label></div>
           <div class="lv"><input type="radio" name="style" id="st_cir" value="circles"><label for="st_cir"><b>Circles</b><small>a family of rings</small><small>in ink</small></label></div>
         </div>
@@ -299,6 +301,8 @@ html{-webkit-text-size-adjust:100%}body{margin:0}img{max-width:100%}[hidden]{dis
 window.MathJax = { tex:{}, svg:{ fontCache:'local' }, startup:{ typeset:false } };
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-svg.js" async></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
+<script src="compact.js"></script>
 <script>
 (function(){
 "use strict";
@@ -664,6 +668,7 @@ function drawSource(){               // the source inset shows the picture itsel
 const fmtTime = s => s < 60 ? Math.round(s) + 's' : Math.floor(s/60) + 'm ' + String(Math.round(s % 60)).padStart(2, '0') + 's';
 const num = (v, tex) => { const s = String(Number(v.toFixed(3))); return tex ? s : s.replace('-', '−'); };
 function termHTML(sh, j){
+  if (sh.kappa !== undefined) return '<i>M</i><sub>' + j + '</sub>: centre (' + num(sh.a, false) + ', ' + num(sh.b, false) + '), ' + sh.K + ' harmonics';
   if (sh.x1 !== undefined) return '<i>L</i><sub>' + j + '</sub>: (' + [sh.x1, sh.y1].map(v => num(v, false)).join(', ') + ') to (' + [sh.x2, sh.y2].map(v => num(v, false)).join(', ') + ')';
   if (sh.r !== undefined) return '<i>C</i><sub>' + j + '</sub>: centre (' + [sh.a, sh.b].map(v => num(v, false)).join(', ') + '), radius ' + num(sh.r, false);
   return '<i>M</i><sub>' + j + '</sub>: (' + [sh.a, sh.b, sh.p, sh.q, sh.t, sh.bend].map(v => num(v, false)).join(', ') + ', ' + sh.k + ')';
@@ -675,6 +680,7 @@ function start(){
   if (!srcImg || !srcImg.complete) return;
   if (job && job.running){ job.stop = true; return; }
   const style = document.querySelector('input[name=style]:checked').value;
+  if (style === 'compact') return startCompact();
   if (style !== 'ellipses') return startInk(style);
   const lv = currentLevel(), P = prepare(srcImg, lv.L), cs = coords(P.w, P.h), n = P.w*P.h;
   const J = Object.assign({}, P, cs, {B: lv.B, shapes: [], running: true, stop: false, stall: 0, rng: mulberry32(20260919), R: 64, Hn: 10, f: 1,
@@ -711,6 +717,46 @@ function startInk(style){
   $('tick').textContent = style === 'lines' ? 'black line segments on white' : 'black circles on white';
   locks().forEach(el => el.disabled = true);
   loop();
+}
+async function startCompact(){
+  const lv = currentLevel(), L = Math.min(360, lv.L + 40), P = prepare(srcImg, L), cs = coords(P.w, P.h);
+  const J = Object.assign({}, P, cs, {style: 'compact', B: lv.B, shapes: [], running: true, stop: false, t0: performance.now(), sumErr: 0});
+  job = J;
+  setAxes(J.w, J.h); drawSource();
+  $('run').textContent = 'Stop and write the formula'; $('run').classList.add('stop');
+  $('tick').textContent = 'finding the parts of the picture';
+  locks().forEach(el => el.disabled = true);
+  const lam = lv.min <= 1 ? 0.012 : lv.min <= 3 ? 0.008 : lv.min <= 10 ? 0.005 : 0.003;   // rmse bought per constant
+  const timer = setInterval(() => {
+    const el = (performance.now() - J.t0)/1000;
+    $('sTime').textContent = fmtTime(el); $('sEta').textContent = fmtTime(Math.max(0, J.B - el));
+    $('fill').style.width = Math.min(100, 100*el/J.B).toFixed(1) + '%';
+  }, 250);
+  const DW = 520, DH = Math.round(DW*J.h/J.w), dc = coords(DW, DH);
+  try {
+    J.model = await Compact.run({T: J.T, w: J.w, h: J.h, X: J.X, Y: J.Y, half: J.half, budget: J.B*0.85, lambda: lam,
+      maxParts: lv.min <= 1 ? 8 : 10, maxTotal: lv.min <= 1 ? 16 : lv.min <= 3 ? 24 : lv.min <= 10 ? 36 : 48, kmax: lv.min <= 3 ? 6 : 8,
+      shouldStop: () => J.stop,
+      onProgress: (stage, f) => { $('tick').textContent = stage; },
+      onPreview: snap => {
+        const m = Compact.round(snap); J.shapes = m.parts;
+        const img = Compact.renderSmall(m, dc.X, dc.Y, DW, DH, null); drawFloat($('cvLive'), DW, DH, img);
+        $('sTerms').textContent = m.parts.length + ' parts, ' + Compact.constants(m) + ' constants';
+      }});
+  } catch(e){
+    clearInterval(timer); $('tick').textContent = 'Compact needs WebGL or TensorFlow.js, which did not load: ' + e.message;
+    J.running = false; $('run').classList.remove('stop'); $('run').textContent = 'Paint the equation'; locks().forEach(el => el.disabled = false); return;
+  }
+  clearInterval(timer);
+  const m = J.model; J.shapes = m.parts;
+  const img = Compact.renderSmall(m, J.X, J.Y, J.w, J.h, null); let se = 0;
+  for (let i = 0; i < img.length; i++){ const d = Math.min(1, Math.max(0, img[i])) - J.T[i]; se += d*d; }
+  J.rmse = 255*Math.sqrt(se/img.length);
+  $('sTerms').textContent = m.parts.length + ' parts, ' + Compact.constants(m) + ' constants'; $('sErr').textContent = J.rmse.toFixed(1);
+  $('tick').textContent = m.parts.length + ' parts, ' + Compact.constants(m) + ' constants' + (m.grain ? ', with grain' : '');
+  J.running = false; $('sEta').textContent = 'done'; $('fill').style.width = '100%';
+  $('run').disabled = true; $('run').classList.remove('stop'); $('run').textContent = 'Evaluating the formula…';
+  setTimeout(() => renderFinal(J), 20);
 }
 function showInkLive(J){ const cv = $('cvLive'); cv.width = J.Dcanvas.width; cv.height = J.Dcanvas.height; cv.getContext('2d').drawImage(J.Dcanvas, 0, 0); }
 function loop(){
@@ -751,6 +797,17 @@ async function renderFinal(J){
   if (MathJax.startup && MathJax.startup.promise) await MathJax.startup.promise;
   let L = null;
   for (const picH of [864, 820]){ L = await layoutPost(J, picH); if (L.fits) break; }
+  if (J.style === 'compact'){
+    const cs = coords(L.W, L.Hh), img = Compact.renderSmall(J.model, cs.X, cs.Y, L.W, L.Hh, null);
+    const pc = document.createElement('canvas'); drawFloat(pc, L.W, L.Hh, img);
+    const live = $('cvLive'); live.width = L.W; live.height = L.Hh; live.getContext('2d').drawImage(pc, 0, 0);
+    J.post = {pc, L, picH: L.picH, W: L.W, H: L.Hh};
+    await showPost(J); writeFormula(J, L.W, L.Hh); storeText(J);
+    $('vidrow').hidden = true; $('makeVid').textContent = 'Make the video';
+    $('result').hidden = false; $('run').disabled = false; $('run').textContent = 'Paint the equation';
+    locks().forEach(el => el.disabled = false); refreshLevelUI();
+    return;
+  }
   if (J.style !== 'ellipses'){
     const ic = inkCanvas(J, L.W, L.Hh);                 // the drawing, at the exact size it is printed
     J.shapes.forEach(sh => drawInk(ic.g, J, sh, ic.sc));
@@ -791,8 +848,60 @@ async function showPost(J){
   if (cap < J.shapes.length){ note.hidden = false; note.textContent = 'The square holds the first ' + cap + ' of ' + J.shapes.length + ' terms; the rest are in the full formula below and in the LaTeX source.'; }
   else note.hidden = true;
 }
+const fx = v => String(Number(v.toFixed(3)));
+const sgn = v => (v < 0 ? ' - ' + fx(-v) : ' + ' + fx(v));
+function colTeX(c){ return fracTeX(quad(Math.round(c[0]*40), Math.round(c[1]*40), Math.round(c[2]*40), 40)); }
+function colText(c){ return 'pick(v, ' + c.map(fx).join(', ') + ')'; }
+function partTeX(p, j){
+  const L = fx(p.a0) + p.ab.map((c, k) => (c[0] ? sgn(c[0]) + '\\cos ' + (k ? (k + 1) : '') + '\\phi_{' + j + '}' : '') + (c[1] ? sgn(c[1]) + '\\sin ' + (k ? (k + 1) : '') + '\\phi_{' + j + '}' : '')).join('');
+  const lin = (c, v) => { const t = colTeX(c); return t === '(0)' || t === '0' ? '' : ' + ' + t + '(' + v + ')'; };
+  const C = colTeX(p.col[0]) + (p.deg ? lin(p.col[1], 'x' + sgn(-p.a)) + lin(p.col[2], 'y' + sgn(-p.b)) : '');
+  return 'L_{' + j + '} = ' + L + ',\\quad M_{' + j + '} = e^{-e^{' + p.kappa + '(\\rho_{' + j + '} e^{-L_{' + j + '}} - 1)}},\\quad (a_{' + j + '}, b_{' + j + '}) = (' + fx(p.a) + ', ' + fx(p.b) + '),\\quad C_{' + j + ',v} = ' + C;
+}
+function compactParts(J, W, Hh){
+  const m = J.model, N = m.parts.length, half = Math.max(W, Hh)/2;
+  const bgTerms = []; let q = 0;
+  for (let a = 0; a < m.nx; a++) for (let b = 0; b < m.ny; b++, q++){
+    const c = m.bg[q]; if (!c.some(t => Math.abs(t) > 1e-9)) continue;
+    bgTerms.push(colTeX(c) + (a ? '\\cos(' + (a > 1 ? a : '') + '\\pi u)' : '') + (b ? '\\cos(' + (b > 1 ? b : '') + '\\pi w)' : ''));
+  }
+  const eqs = [
+    'F(t) = \\left\\lfloor 255\\, e^{-e^{-1000t}}\\, |t|^{e^{-e^{1000(t-1)}}} \\right\\rfloor, \\quad x = \\frac{m - ' + W/2 + '}{' + half + '}, \\quad y = \\frac{' + Hh/2 + ' - n}{' + half + '}, \\quad u = \\frac{x + ' + m.xr + '}{' + fx(2*m.xr) + '}, \\quad w = \\frac{y + ' + m.yr + '}{' + fx(2*m.yr) + '},',
+    'H_v(x,y) = H_{' + N + ',v}(x,y)' + (m.grain ? '\\left(1 + ' + fx(m.grain.amp) + '\\left(K(x,y) - ' + fx(m.grain.mu) + '\\right)\\left(1 - \\prod_{j=1}^{' + N + '}(1 - M_j)\\right)\\right)' : '') + ', \\quad H_{j,v} = H_{j-1,v}(1 - M_j) + C_{j,v} M_j, \\quad \\rho_j = \\sqrt{(x - a_j)^2 + (y - b_j)^2}, \\quad \\phi_j = \\operatorname{atan2}(y - b_j,\\, x - a_j),',
+    'H_{0,v}(x,y) = ' + bgTerms.join(' + ').replace(/\+ -/g, '- ') + ','
+  ];
+  if (m.grain) eqs.push('K(x,y) = \\frac{1}{' + m.grain.n + '}\\sum_{s=1}^{' + m.grain.n + '} e^{-e^{-200\\left(\\cos^{10}\\left((' + m.grain.f + ' + \\frac{s}{5})(x\\cos s^2 + y\\sin s^2) + 10\\sin 10s\\right)\\cos^{10}\\left((' + m.grain.f + ' + \\frac{s}{5})(x\\sin s^2 - y\\cos s^2) + 10\\sin 9s\\right) - \\frac{1}{2}\\right)}},');
+  m.parts.forEach((p, i) => eqs.push(partTeX(p, i + 1) + (i < N - 1 ? ',' : '.')));
+  return {N, eqs, lines: [], title: postTitle() + ' in ' + N + ' Parts',
+    intro: 'This image is built from ' + N + ' parts laid over a smooth background, ' + Compact.constants(m) + ' constants in all. For m = 1, 2, 3, …, ' + W + ' and n = 1, 2, 3, …, ' + Hh + ', the color of the pixel of the row n and the column m is rgb(F(H₀(x, y)), F(H₁(x, y)), F(H₂(x, y))), where'};
+}
+function compactText(J, W, Hh){
+  const m = J.model, half = Math.max(W, Hh)/2, out = [
+    '# ' + postTitle() + ' in ' + m.parts.length + ' Parts, ' + Compact.constants(m) + ' constants, painted by Equation Painter (murtadha203.github.io/equation-painter)',
+    '# Each part j is one closed curve M_j with its own shading C_j, painted over what lies below it. Change anything.',
+    'mode: pixel', 'size: ' + W + ' x ' + Hh, 'x = (m - ' + W/2 + ')/' + half, 'y = (' + Hh/2 + ' - n)/' + half,
+    'u = (x + ' + m.xr + ')/' + fx(2*m.xr), 'w = (y + ' + m.yr + ')/' + fx(2*m.yr)];
+  const bg = []; let q = 0;
+  for (let a = 0; a < m.nx; a++) for (let b = 0; b < m.ny; b++, q++) bg.push(colText(m.bg[q]) + '*cos(' + a + '*pi*u)*cos(' + b + '*pi*w)');
+  out.push('H0 = ' + bg.join(' + '));
+  m.parts.forEach((p, i) => {
+    const j = i + 1;
+    out.push('p' + j + ' = atan2(y - ' + fx(p.b) + ', x - ' + fx(p.a) + ')');
+    out.push('M' + j + ' = exp(-exp(' + p.kappa + '*(sqrt((x - ' + fx(p.a) + ')^2 + (y - ' + fx(p.b) + ')^2)*exp(-(' + fx(p.a0) +
+      p.ab.map((c, k) => ' + ' + fx(c[0]) + '*cos(' + (k + 1) + '*p' + j + ') + ' + fx(c[1]) + '*sin(' + (k + 1) + '*p' + j + ')').join('') + ')) - 1)))');
+    out.push('H' + j + ' = H' + (j - 1) + '*(1 - M' + j + ') + (' + colText(p.col[0]) + (p.deg ? ' + ' + colText(p.col[1]) + '*(x - ' + fx(p.a) + ') + ' + colText(p.col[2]) + '*(y - ' + fx(p.b) + ')' : '') + ')*M' + j);
+  });
+  const N = m.parts.length;
+  if (m.grain){
+    out.push('K = sum(s, 1, ' + m.grain.n + ', exp(-exp(-200*(cos((' + m.grain.f + ' + s/5)*(x*cos(s^2) + y*sin(s^2)) + 10*sin(10*s))^10*cos((' + m.grain.f + ' + s/5)*(x*sin(s^2) - y*cos(s^2)) + 10*sin(9*s))^10 - 1/2)))/' + m.grain.n + ')');
+    out.push('A = 1 - ' + m.parts.map((p, i) => '(1 - M' + (i + 1) + ')').join('*'));
+    out.push('H = H' + N + '*(1 + ' + fx(m.grain.amp) + '*(K - ' + fx(m.grain.mu) + ')*A)');
+  } else out.push('H = H' + N);
+  return out.join('\n') + '\n';
+}
 function inkFrame(J){ return {xr: r3((J.w/2)/J.half), yr: r3((J.h/2)/J.half)}; }
 function formulaText(J, W, Hh){
+  if (J.style === 'compact') return compactText(J, W, Hh);
   if (J.style !== 'ellipses'){
     const {xr, yr} = inkFrame(J), lines = J.style === 'lines', f = v => String(Number(v.toFixed(4)));
     const out = [
@@ -848,6 +957,7 @@ async function makeVideo(J){
   const S = 1080, sc = S/1440, L = J.post.L, fps = 30, grow = 8*fps, hold = 2*fps, N = J.shapes.length;
   const cv = document.createElement('canvas'); cv.width = S; cv.height = S; const g = cv.getContext('2d');
   const post = $('postImg');
+  if (J.style === 'compact') return makeCompactVideo(J);
   const ink = J.style !== 'ellipses';
   const O = ink ? null : surface(J, Math.round(Math.max(J.post.W, J.post.H)*sc));
   const oc = ink ? inkCanvas(J, Math.round(J.post.W*sc), Math.round(J.post.H*sc)) : document.createElement('canvas');
@@ -873,6 +983,35 @@ async function makeVideo(J){
   const ext = type.startsWith('video/mp4') ? 'mp4' : 'webm';
   $('vid').src = url; $('vidDl').href = url; $('vidDl').download = postTitle().replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-').toLowerCase() + '-equation.' + ext;
   $('vidNote').textContent = ((grow + hold)/fps) + ' s, 1080 x 1080, ' + ext.toUpperCase() + (ext === 'webm' ? ' (this browser cannot record MP4; Chrome or Edge can)' : '');
+  $('vidrow').hidden = false; b.disabled = false; b.textContent = 'Make the video again';
+}
+async function makeCompactVideo(J){
+  const b = $('makeVid'); b.disabled = true; b.textContent = 'Preparing frames';
+  const S = 1080, sc = S/1440, fps = 30, N = J.model.parts.length;
+  const rw = Math.round(J.post.W*sc), rh = Math.round(J.post.H*sc), rx = Math.round((1440 - J.post.W)/2*sc), cs = coords(rw, rh);
+  const frames = [];
+  for (let k = 0; k <= N; k++){
+    const m = Object.assign({}, J.model, {grain: k === N ? J.model.grain : null});
+    const img = Compact.renderSmall(m, cs.X, cs.Y, rw, rh, k), c = document.createElement('canvas'); drawFloat(c, rw, rh, img); frames.push(c);
+    b.textContent = 'Preparing frames ' + (k + 1) + '/' + (N + 1); await new Promise(r => setTimeout(r, 0));
+  }
+  const types = ['video/mp4;codecs=avc1.42E01E', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm'];
+  const type = types.find(t => window.MediaRecorder && MediaRecorder.isTypeSupported(t));
+  if (!type){ $('vidNote').textContent = 'This browser cannot record video.'; $('vidrow').hidden = false; b.disabled = false; return; }
+  const cv = document.createElement('canvas'); cv.width = S; cv.height = S; const g = cv.getContext('2d'), post = $('postImg');
+  const rec = new MediaRecorder(cv.captureStream(fps), {mimeType: type, videoBitsPerSecond: 10e6}), chunks = [];
+  rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data); }; const done = new Promise(r => rec.onstop = r);
+  const per = Math.max(6, Math.round(7*fps/(N + 1))), total = per*(N + 1) + 2*fps;
+  g.drawImage(post, 0, 0, S, S); g.drawImage(frames[0], rx, 0, rw, rh); rec.start(); const t0 = performance.now();
+  for (let f = 1; f <= total; f++){
+    g.drawImage(post, 0, 0, S, S); g.drawImage(frames[Math.min(N, Math.floor(f/per))], rx, 0, rw, rh);
+    b.textContent = 'Recording ' + Math.ceil((total - f)/fps) + ' s';
+    const wait = t0 + f*1000/fps - performance.now(); await new Promise(r => setTimeout(r, Math.max(0, wait)));
+  }
+  rec.stop(); await done;
+  const blob = new Blob(chunks, {type: type.split(';')[0]}), url = URL.createObjectURL(blob), ext = type.startsWith('video/mp4') ? 'mp4' : 'webm';
+  $('vid').src = url; $('vidDl').href = url; $('vidDl').download = postTitle().replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-').toLowerCase() + '-equation.' + ext;
+  $('vidNote').textContent = (total/fps).toFixed(0) + ' s, 1080 x 1080, ' + ext.toUpperCase() + ', one part at a time';
   $('vidrow').hidden = false; b.disabled = false; b.textContent = 'Make the video again';
 }
 $('makeVid').addEventListener('click', () => { if (job && job.post && !job.running) makeVideo(job); });
@@ -907,6 +1046,7 @@ const fracTeX = q => q.D === 1 ? '(' + polyText(q.P, true) + ')' : '\\frac{' + p
 const fracHTML = q => q.D === 1 ? '(' + polyText(q.P, false) + ')' : '(' + polyText(q.P, false) + ')/' + q.D;
 
 function formulaParts(J, W, Hh){
+  if (J.style === 'compact') return compactParts(J, W, Hh);
   if (J.style !== 'ellipses'){
     const N = J.shapes.length, {xr, yr} = inkFrame(J), lines = J.style === 'lines';
     const eqs = [lines
@@ -934,6 +1074,12 @@ function formulaParts(J, W, Hh){
            ', the color of the pixel of the row n and the column m is rgb(F(H₀(x, y)), F(H₁(x, y)), F(H₂(x, y))), where'};
 }
 function writeFormula(J, W, Hh){
+  if (J.style === 'compact'){
+    const {eqs, title, intro} = compactParts(J, W, Hh), f = $('formula');
+    f.innerHTML = '<p>' + intro + '</p>' + eqs.map(e => '<div class="eq">\\[' + e + '\\]</div>').join('');
+    $('latexOut').value = ['% ' + title].concat(eqs).join('\n');
+    typeset(f); return;
+  }
   if (J.style !== 'ellipses'){
     const {N, eqs, lines, title, intro} = formulaParts(J, W, Hh), f = $('formula');
     f.innerHTML = '<p>' + intro + '</p>' + eqs.map(e => '<div class="eq">\\[' + e + '\\]</div>').join('') +
@@ -979,8 +1125,15 @@ async function layoutPost(J, picH){
   const parts = formulaParts(J, W, Hh), g = document.createElement('canvas').getContext('2d'), maxW = POST - 2*PADX;
   g.font = '21px ' + SERIF; const introLines = wrap(g, parts.intro, maxW);
   const eqImgs = [];
-  for (const e of parts.eqs){ let m = await mathImage(e, 9.5); if (m.w > maxW){ m = await mathImage(e, 9.5*maxW/m.w); } eqImgs.push(m); }
+  let ex = 9.5;
+  for (let tries = 0; tries < 14; tries++){
+    eqImgs.length = 0; let tot = 0;
+    for (const e of parts.eqs){ let m = await mathImage(e, ex); if (m.w > maxW){ m = await mathImage(e, ex*maxW/m.w); } eqImgs.push(m); tot += m.h + 4; }
+    if (J.style !== 'compact' || Hh + 110 + introLines.length*28 + tot < POST - 20) break;
+    ex *= 0.85;
+  }
   const headTex = J.style === 'lines' ? '\\text{and the endpoints are listed as}\\quad k:\\ (A_k, B_k),\\ (C_k, D_k)'
+    : J.style === 'compact' ? '\\text{}'
     : J.style === 'circles' ? '\\text{and the circles are listed as}\\quad k:\\ (A_k, B_k, R_k)'
     : '\\text{and for } j = 1, 2, \\ldots, ' + parts.N + '\\text{ the constants are listed as}\\quad j:\\ (a_j, b_j, p_j, q_j, \\theta_j, \\beta_j, k_j)\\ \\ \\alpha_j(v);\\ \\gamma_j(v);\\ \\delta_j(v)';
   const head = await mathImage(headTex, 8.5);

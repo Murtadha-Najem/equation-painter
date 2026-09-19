@@ -141,7 +141,7 @@ R = 1/20 + sin(pi*k/2000)^2/10</pre>
       <h3>Painter layers</h3>
       <p>The painter's own format: a background B, then one row per term, each painted over the last by M and C. The shape of M and C is yours to change; the rows are the constants.</p>
       <pre>sum(s, 1, 40, expr)   prod(s, 1, 40, expr)
-abs sqrt exp ln sin cos tan arctan arcsin
+abs sqrt exp ln sin cos tan arctan atan2 arcsin
 arccos floor sign min max pick(v, r, g, b)
 pi  e  ^  * /  + -   # comment</pre>
     </section>
@@ -242,7 +242,7 @@ H = (1 - D)*((4 - v)/5 - y*(v + 1)/4 + S) + D*((1 + v)/8 + y/4 + 3/5*G)
 
 /* ============================ the language ============================ */
 const FUNCS = {abs:"Math.abs", sqrt:"Math.sqrt", exp:"_exp", ln:"Math.log", log:"Math.log", sin:"Math.sin", cos:"Math.cos", tan:"Math.tan",
-  arctan:"Math.atan", atan:"Math.atan", arcsin:"Math.asin", arccos:"Math.acos", floor:"Math.floor", sign:"Math.sign", min:"Math.min", max:"Math.max",
+  arctan:"Math.atan", atan:"Math.atan", atan2:"Math.atan2", arcsin:"Math.asin", arccos:"Math.acos", floor:"Math.floor", sign:"Math.sign", min:"Math.min", max:"Math.max",
   sinh:"Math.sinh", cosh:"Math.cosh", tanh:"Math.tanh", pick:"_pick"};
 function tokenize(src, line){
   const out = []; let i = 0;
