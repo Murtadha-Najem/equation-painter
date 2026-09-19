@@ -177,6 +177,49 @@ W = (-11*v^2 + 15*v + 16)/20*exp(-exp(-100*g)) + (20 - 7*v^2 + 5*v)/20*(1 + K)*e
 R = (5*v^2 - 11*v + 10)/20*(1 - L) + W
 H = (18 - 9*v + v^2)/40*E*A*(1 - B) + (20 - 7*v^2 + 5*v)/20*B*(1 + K)*(3/10 + 9/20*Q) + (1 - A)*(1 + K)*(1 - B)*exp(-exp(-(x + y/8 + 2)))*R - (-2 + 15*v - 5*v^2)/20*exp(-exp(200*(3/2*(x + y/4 + 36/25)^2 + 13/10*(y - x/4 - 9/20)^2 - 63/1000))) - exp(-exp(100*(2*(x + y/4 + 36/25)^2 + 4/5*abs(y - x/4 - 9/20) - 7/125))) + 6/5*exp(-exp(100*(140*(x - 2*(y - 1/10)^2 + 8/5)^2 + 100*(y - 1/10)^4 - 3/100)))
 `},
+{name: "Hedgehog", by: "Yeganeh, 2024", text:
+`# Hedgehog by Hamid Naderi Yeganeh (Instagram, 9 Dec 2024), transcribed from his post.
+# Heavy: about a minute at 360 px. Indexed pieces like U(s) are written as functions of s; each is computed once per pixel.
+mode: pixel
+size: 2000 x 1200
+x = (m - 1000)/610
+y = (631 - n)/610
+# E: fine texture, thirty thresholded cos^2 lattices
+E = sum(s, 1, 30, exp(-exp(291/100 - 3*cos((56/50)^s*5*(cos(2*s)*x + sin(2*s)*y) + 2*sin(7*s))^2*cos((56/50)^s*5*(cos(2*s)*y - sin(2*s)*x) + 2*sin(8*s))^2)))
+# R: distance from the nose
+R = (abs(x)^(23/10) + 2*100^(-23/10)*abs(100*y + 67)^(23/10))^(10/23)
+# A0, A1: the eyes (A_v with v = 0 and v = 1)
+A0 = exp(-exp(-20*(sin(9/2*x)^2*cos(6*y + 6/5) - 93/100) + 20*(4*y + 4/5)^10 + 20*(3/2*x)^10))
+A1 = exp(-exp(-400*(sin(9/2*x + 9/100)^2*cos(6*y + 6/5 - 6/50) - 93/100 - 67/1000) + 400*(4*y + 4/5 - 4/50)^10 + 400*(3/2*x + 3/100)^10))
+# W10(s), W21(s): switches, about 1 for s below 10 (or 21) and 0 above
+W10(s) = exp(-exp(5*s - 50 - 1/2))
+W21(s) = exp(-exp(5*s - 105 - 1/2))
+D(s) = y - sqrt(s)/sqrt(20) + 6/5
+Q(s) = x + (x^2 + D(s)^2)/20*(cos(7*x - 2*y + 3*s) + W10(s)*cos(18*x - 12*y + 5*s))
+P(s) = D(s) - 1/5 + (x^2 + D(s)^2)/20*(cos(4*x + 3*y + 2*s) + W10(s)*cos(17*x + 9*y + 4*s))
+G(s) = Q(s)^2 + P(s)^2
+N(s) = arctan(P(s)/(1/1000 + abs(Q(s))))
+# C, B: the grass blades
+C(s) = x + 2/5*cos(4*s)*y + cos(5*s)/1125*(15*y + 27 - s)^2 + (7*cos(5*cos(7*s)*y + 2*x + 3*s) + cos(14*y - 17*x + 4*s))/100
+B(s) = (30 + 7*cos(8*s))*C(s) + cos(14*C(s) + 2*s) + 2*cos(3*s)
+# J_{v,s}: the quills of layer s (v = 50 and v = 4)
+I(s) = cos((20*(1 + 2*A0) + 3*s + (60 + 5*s)*W10(s) + 3*cos(4*s))*N(s) + (1 + 2*W10(s))/2*cos(20*(1 + W10(s))*N(s) + 3*cos(8*s)) + 2*cos(5*s)) + 5/4 - 7/4*20^(3/2)*s^(-3/2)*G(s) + (3 + 2*W10(s))/5*cos((40 + 2*s + 30*W10(s))*N(s) + 3*cos(7*s))
+X(s) = exp(-exp(-100*(s - 1/2)) - exp(-1000*(G(s) - s/20 + 7/10)) - exp(-1000*(N(s) + 8/5 - 2*s/25))*W21(s))
+J50(s) = exp(-exp((25*W10(s) - 50)*I(s)))*X(s)
+J4(s) = exp(-exp((4/25*W10(s) - 4)*I(s)))*X(s)
+# K_{v,s}: grass masks (v = 80 and v = 5)
+Kx(s) = cos(B(s)) + E/60 - 7/10 - y + 9/10 - 3/2*(97/100)^s + cos(8*s)/20 + cos(8*cos(17*s)*x + 3*y + 7*s)/4
+K80(s) = exp(-exp(-100*(s - 1/2)) - exp(-80*Kx(s)) - exp(-500*abs(C(s)) + 25*(10 + s)*W21(s)))
+K5(s) = exp(-exp(-100*(s - 1/2)) - exp(-5*Kx(s)) - exp(-500*abs(C(s)) + 25*(10 + s)*W21(s)))
+# T, V: colours of quills and grass
+T(s) = (8 + 3*exp(-exp(-15*y - 12 + 9*abs(x)^(7/10))))*exp(-exp(-N(s) - 8/5 + 2*s/25))*((6 - v)/5 + cos((6 + v)*s)/25 - (1/2 + v/10 + cos((2 + v)*s)/25)*(1 - W10(s))*exp(-exp(-200*(G(s) - (35 - s)/150*cos((40 + 2*s)*N(s) + 3*cos(7*s)) - s/20 + 1/10 + E/20))))
+V(s) = (2 + E/30 - 3/5*cos(B(s))^5)*(y - 7/20 + 3/2*(97/100)^s)*K80(s)*K5(s)*((4*v - 2*v^2)/5 + (3 - v^2 + v)/10*cos(3*s)^2 + 1/4*cos(7*cos(8*s)*x + y + (7 + v)*s)^2 + (6 - 3*v)/10*sin(3*s)^2)
+U(s) = J50(s)*J4(s)/100*(4*W10(s) + 2 + (7 - 6*W10(s))*20^6*s^(-6)*G(s)^4)*T(s) + (1 - J50(s))*(1 - exp(-exp(5*G(s) - s/4))*W21(s))*V(s)
+# Z(s): what layers 1..s leave uncovered; L paints the fifty layers front to back
+Z(s) = prod(u, 1, s, (1 - J50(u))*(1 - K80(u)))
+L = sum(s, 1, 50, U(s)*Z(s - 1))
+H = A1 + L*(1 - 3/2*A0)*exp(-exp(12 - 100*R) - exp(-20*R - (3*v^2 - 9*v - 24)/10)) + 2*exp(-exp(50*(abs(R - 2/25) + (x - y)/3 - 11/60))) + (1/2 - v/10 + (3 + v^2)/10*exp(-exp(10 - 20*y)))*Z(50)
+`},
 {name: "A Bird in Flight", by: "Yeganeh, 40,001 circles", text:
 `# A Bird in Flight by Hamid Naderi Yeganeh: all circles (x - A(k))^2 + (y - B(k))^2 = R(k)^2, transcribed from his post.
 mode: circles
@@ -361,7 +404,10 @@ function compileDefs(defs, baseScope, needName){
       const inner = Object.assign({}, scope); extra.forEach(a => inner[a] = "_a_" + a);
       const body = parseExpr(tokenize(d.body, d.line), d.line, inner);
       const fname = "_f_" + d.name;
-      code.push("const " + fname + " = (" + extra.map(a => "_a_" + a).join(",") + ") => " + body + ";");
+      if (extra.length === 1){                                           // one index, like U(s): remember each value for this pixel
+        const a = "_a_" + extra[0], memo = "_k_" + d.name;
+        code.push("const " + memo + " = []; const " + fname + " = (" + a + ") => { let r = " + memo + "[" + a + "]; if (r === undefined){ r = " + body + "; " + memo + "[" + a + "] = r; } return r; };");
+      } else code.push("const " + fname + " = (" + extra.map(a => "_a_" + a).join(",") + ") => " + body + ";");
       scope[d.name] = {fn: true, js: null, call: fname};
       FUNCS[d.name] = fname;
       continue;
