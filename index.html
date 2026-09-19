@@ -202,8 +202,7 @@ html{-webkit-text-size-adjust:100%}body{margin:0}img{max-width:100%}[hidden]{dis
         <div class="step-h"><span class="mono">02</span>Detail and time</div>
         <div class="levels" id="levels" role="radiogroup" aria-label="Detail level"></div>
         <div class="custom" id="custom" hidden>
-          <div class="slider"><div class="top"><label for="nTerms">Terms</label><output id="nTermsOut">120</output></div><input type="range" id="nTerms" min="8" max="600" step="1" value="120"></div>
-          <div class="slider"><div class="top"><label for="effort">Search effort</label><output id="effortOut">3 / 5</output></div><input type="range" id="effort" min="1" max="5" step="1" value="3"></div>
+          <div class="slider" style="grid-column:1/-1"><div class="top"><label for="minutes">Time budget</label><output id="minutesOut">5 min</output></div><input type="range" id="minutes" min="1" max="60" step="1" value="5"></div>
         </div>
       </div>
 
@@ -241,7 +240,7 @@ html{-webkit-text-size-adjust:100%}body{margin:0}img{max-width:100%}[hidden]{dis
       <article>
         <h3>A soft mask</h3>
         <div class="snip">e<sup>−e<sup>z</sup></sup></div>
-        <p>Close to 1 where z is negative, close to 0 where it is positive. Put an ellipse inside z and you get a blurred stencil. Every term in the formula is one of these.</p>
+        <p>Close to 1 where z is negative, close to 0 where it is positive. Put an ellipse inside z and you get a stencil; the factor k in front sets how sharp its edge is, from a soft glow at 2 to a crisp line at 32. Every term is one of these.</p>
       </article>
       <article>
         <h3>Three colours from one line</h3>
@@ -251,11 +250,11 @@ html{-webkit-text-size-adjust:100%}body{margin:0}img{max-width:100%}[hidden]{dis
       </article>
       <article>
         <h3>Search, then round</h3>
-        <div class="snip">θ = 1.57, p = 0.21</div>
-        <p>Each new term tries random spots, favouring the ones furthest from your picture, then nudges the best. Numbers are rounded to two decimals as it goes, so the formula printed is exactly the one that drew.</p>
+        <div class="snip">θ = 1.57, p = 0.21, k = 16</div>
+        <p>Each new term tries random spots, favouring the ones furthest from your picture, then nudges the best. The time you pick sets how hard each term searches: a longer budget reads the picture in finer detail and places every term more carefully. Numbers are rounded to two decimals as it goes, so the formula printed is exactly the one that drew.</p>
       </article>
     </div>
-    <p class="honest"><b>What it does and does not do.</b> The formula stores no pixels: each term is eight numbers, so a 120 term picture carries about a thousand constants against hundreds of thousands of pixels. The search does read your image to measure the difference, as any automatic fit must. Yeganeh designs each term by hand and each one means something, an eye or a fin; here each term is a patch the search chose.</p>
+    <p class="honest"><b>What it does and does not do.</b> The formula stores no pixels: each term is nine numbers, so even a 1,000 term picture carries about nine thousand constants against hundreds of thousands of pixels. The search does read your image to measure the difference, as any automatic fit must. Yeganeh designs each term by hand and each one means something, an eye or a fin; here each term is a patch the search chose.</p>
   </section>
 </div>
 
@@ -270,41 +269,37 @@ const $ = id => document.getElementById(id);
 
 /* ---------------- levels ---------------- */
 const LEVELS = [
-  {id:'glance', name:'Glance', N:24,  L:96,  R:30, H:40},
-  {id:'sketch', name:'Sketch', N:70,  L:128, R:45, H:70},
-  {id:'study',  name:'Study',  N:180, L:160, R:60, H:110},
-  {id:'plate',  name:'Plate',  N:420, L:200, R:80, H:150},
-  {id:'custom', name:'Custom', custom:true}
+  {id:'study',    name:'Study',    min:1},
+  {id:'portrait', name:'Portrait', min:3},
+  {id:'plate',    name:'Plate',    min:10},
+  {id:'opus',     name:'Opus',     min:30},
+  {id:'custom',   name:'Custom',   custom:true}
 ];
-let RATE = 1/2.5e7;   // seconds per unit of work; replaced by this device's measured speed after the first run
-function secondsFor(lv){ return lv.N*(lv.R + lv.H)*(lv.L*lv.L)*RATE; }
-function timeLabel(s){ if (s < 6) return '< 5 s'; if (s < 55) return '~' + Math.round(s/5)*5 + ' s'; const m = s/60; return '~' + (m < 10 ? (Math.round(m*2)/2) : Math.round(m)) + ' min'; }
+// longer budgets read the picture at a higher resolution and allow a longer formula
+function plan(min){
+  return {min, B: min*60, L: Math.round(200 + 200*Math.min(1, Math.log(min)/Math.log(30))), cap: Math.round(400*Math.pow(min, 0.68))};
+}
+const minLabel = m => m + (m === 1 ? ' minute' : ' minutes');
 const lvBox = $('levels');
 LEVELS.forEach((lv, k) => {
   const d = document.createElement('div'); d.className = 'lv';
   const dots = '<div class="dots">' + [0,1,2,3].map(i => '<i class="' + (!lv.custom && i <= k ? 'on' : '') + '"></i>').join('') + '</div>';
-  const sub = lv.custom ? '<small>your pick</small><small>&nbsp;</small>' : '<small>' + lv.N + ' terms</small><small class="t">' + timeLabel(secondsFor(lv)) + '</small>';
-  d.dataset.k = k;
+  const sub = lv.custom ? '<small>1 to 60 min</small><small>your pick</small>' : '<small>' + lv.min + ' min</small><small>&le; ' + plan(lv.min).cap + ' terms</small>';
   d.innerHTML = '<input type="radio" name="level" id="lv_' + lv.id + '" value="' + lv.id + '"' + (k === 0 ? ' checked' : '') + '><label for="lv_' + lv.id + '">' + dots + '<b>' + lv.name + '</b>' + sub + '</label>';
   lvBox.appendChild(d);
 });
 function currentLevel(){
   const id = document.querySelector('input[name=level]:checked').value, lv = LEVELS.find(l => l.id === id);
-  if (!lv.custom) return lv;
-  const e = +$('effort').value;
-  return {id:'custom', name:'Custom', N: +$('nTerms').value, L: 80 + 24*e, R: 15 + 15*e, H: 25 + 30*e};
+  return Object.assign({name: lv.name}, plan(lv.custom ? +$('minutes').value : lv.min));
 }
 function refreshLevelUI(){
   $('custom').hidden = document.querySelector('input[name=level]:checked').value !== 'custom';
-  $('nTermsOut').textContent = $('nTerms').value; $('effortOut').textContent = $('effort').value + ' / 5';
-  document.querySelectorAll('.lv small.t').forEach(el => { el.textContent = timeLabel(secondsFor(LEVELS[+el.closest('.lv').dataset.k])); });
+  $('minutesOut').textContent = $('minutes').value + ' min';
   const lv = currentLevel();
-  const tl = timeLabel(secondsFor(lv));
-  $('est').innerHTML = '<b>' + lv.N + ' terms</b>, ' + (tl.startsWith('<') ? 'under 5 s' : 'about ' + tl.replace('~', '')) + ' on this device';
+  $('est').innerHTML = '<b>' + minLabel(lv.min) + '</b>, up to ' + lv.cap + ' terms, picture read at ' + lv.L + ' px';
 }
 lvBox.addEventListener('change', refreshLevelUI);
-$('nTerms').addEventListener('input', refreshLevelUI);
-$('effort').addEventListener('input', refreshLevelUI);
+$('minutes').addEventListener('input', refreshLevelUI);
 
 /* ---------------- source image ---------------- */
 let srcImg = null, srcName = 'Sunset';
@@ -336,7 +331,7 @@ function loadFile(f){
 }
 
 /* ---------------- engine ---------------- */
-const K = 8, PI = Math.PI;
+const PI = Math.PI;
 const q2 = v => Math.round(v*100)/100;
 let job = null;
 
@@ -370,13 +365,13 @@ function fitBackground(J){
 const bgValue = (bg, c, x, y) => (bg[c][0] + bg[c][1]*x + bg[c][2]*y)/80;
 
 function bbox(J, sh){
-  const r = 1.28*Math.max(sh.p, sh.q), {half, w, h} = J;
+  const r = Math.sqrt(1 + 5/sh.k)*Math.max(sh.p, sh.q), {half, w, h} = J;
   return [Math.max(0, Math.floor((sh.a - r)*half + w/2 - 1)), Math.min(w - 1, Math.ceil((sh.a + r)*half + w/2 - 1)),
           Math.max(0, Math.floor(h/2 - 1 - (sh.b + r)*half)), Math.min(h - 1, Math.ceil(h/2 - 1 - (sh.b - r)*half))];
 }
 function maskAt(sh, x, y, ct, st){
   const dx = x - sh.a, dy = y - sh.b, u = dx*ct + dy*st, v = dy*ct - dx*st;
-  const z = K*(u*u/(sh.p*sh.p) + v*v/(sh.q*sh.q) - 1);
+  const z = sh.k*(u*u/(sh.p*sh.p) + v*v/(sh.q*sh.q) - 1);
   if (z > 5) return 0; if (z < -40) return 1;
   return Math.exp(-Math.exp(z));
 }
@@ -410,20 +405,21 @@ function apply(J, sh){
 }
 function quant(sh){
   sh.a = q2(sh.a); sh.b = q2(sh.b); sh.p = Math.max(0.01, Math.min(1.5, q2(sh.p))); sh.q = Math.max(0.01, Math.min(1.5, q2(sh.q)));
-  let t = sh.t % PI; if (t < 0) t += PI; sh.t = Math.min(3.14, q2(t)); return sh;
+  let t = sh.t % PI; if (t < 0) t += PI; sh.t = Math.min(3.14, q2(t)); sh.e = Math.max(1, Math.min(5, sh.e)); sh.k = 2**sh.e; return sh;
 }
 const gauss = () => { let u = 0, v = 0; while (!u) u = Math.random(); while (!v) v = Math.random(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*PI*v); };
 function randShape(J){
   const {w, h, err, X, Y} = J; let best = -1, bi = 0;
   for (let t = 0; t < 5; t++){ const idx = (Math.random()*w*h) | 0; if (err[idx] > best){ best = err[idx]; bi = idx; } }
-  const smax = 0.04 + 0.5*Math.max(0.08, 1 - J.shapes.length/J.N);
-  return quant({a: X[bi % w], b: Y[(bi/w) | 0], p: 0.015 + Math.random()*smax, q: 0.015 + Math.random()*smax, t: Math.random()*PI});
+  const smax = 0.03 + 0.5*Math.max(0.05, 1 - J.shapes.length/J.N)**1.5;
+  return quant({a: X[bi % w], b: Y[(bi/w) | 0], p: 0.012 + Math.random()*smax, q: 0.012 + Math.random()*smax, t: Math.random()*PI, e: 2 + ((Math.random()*3) | 0)});
 }
 function mutate(sh){
-  const m = {a: sh.a, b: sh.b, p: sh.p, q: sh.q, t: sh.t}, g = gauss();
-  switch ((Math.random()*5) | 0){
-    case 0: m.a += 0.04*g; break; case 1: m.b += 0.04*g; break;
-    case 2: m.p *= Math.exp(0.25*g); break; case 3: m.q *= Math.exp(0.25*g); break; default: m.t += 0.35*g;
+  const m = {a: sh.a, b: sh.b, p: sh.p, q: sh.q, t: sh.t, e: sh.e}, g = gauss(), sd = Math.max(0.01, 0.3*Math.max(sh.p, sh.q));
+  switch ((Math.random()*6) | 0){
+    case 0: m.a += sd*g; break; case 1: m.b += sd*g; break;
+    case 2: m.p *= Math.exp(0.25*g); break; case 3: m.q *= Math.exp(0.25*g); break;
+    case 4: m.t += 0.35*g; break; default: m.e += g > 0 ? 1 : -1;
   }
   return quant(m);
 }
@@ -455,16 +451,16 @@ function previewSource(){
 const fmtTime = s => s < 60 ? Math.round(s) + 's' : Math.floor(s/60) + 'm ' + String(Math.round(s % 60)).padStart(2, '0') + 's';
 const num = (v, tex) => { const s = String(Number(v.toFixed(2))); return tex ? s : s.replace('-', '−'); };
 function termHTML(sh, j){
-  return '<i>M</i><sub>' + j + '</sub> = <i>E</i>(<i>x</i>, <i>y</i>; ' + [sh.a, sh.b, sh.p, sh.q, sh.t].map(v => num(v, false)).join(', ') + ')';
+  return '<i>M</i><sub>' + j + '</sub> = <i>E</i>(<i>x</i>, <i>y</i>; ' + [sh.a, sh.b, sh.p, sh.q, sh.t].map(v => num(v, false)).join(', ') + ', ' + sh.k + ')';
 }
 
 /* ---------------- run ---------------- */
-const locks = () => document.querySelectorAll('input[name=level], #nTerms, #effort, #file');
+const locks = () => document.querySelectorAll('input[name=level], #minutes, #file');
 function start(){
   if (!srcImg || !srcImg.complete) return;
   if (job && job.running){ job.stop = true; return; }
   const lv = currentLevel(), P = prepare(srcImg, lv.L), cs = coords(P.w, P.h);
-  const J = Object.assign({}, P, cs, {N: lv.N, R: lv.R, H: lv.H, shapes: [], running: true, stop: false, stall: 0,
+  const J = Object.assign({}, P, cs, {N: lv.cap, B: lv.B, f: 1, R: 30, H: 60, shapes: [], running: true, stop: false, stall: 0,
     C: new Float32Array(P.w*P.h*3), err: new Float32Array(P.w*P.h), buf: new Float32Array(P.w*P.h), sumErr: 0, t0: performance.now(), lastDraw: 0});
   J.bg = fitBackground(J);
   for (let j = 0; j < J.h; j++) for (let i = 0; i < J.w; i++){
@@ -480,25 +476,26 @@ function start(){
   loop();
 }
 function loop(){
-  const J = job, sliceEnd = performance.now() + 28;
-  while (J.shapes.length < J.N && !J.stop && performance.now() < sliceEnd){
-    if (!step(J)){ if (++J.stall > 40) break; } else J.stall = 0;
+  const J = job, sliceEnd = performance.now() + 28, tau = J.B/J.N;   // seconds each term may spend
+  while (J.shapes.length < J.N && !J.stop && performance.now() < sliceEnd && (performance.now() - J.t0)/1000 < J.B){
+    const t = performance.now(), ok = step(J), dt = Math.max(1e-4, (performance.now() - t)/1000);
+    if (!ok){ if (++J.stall > 60) break; } else J.stall = 0;
+    J.f = Math.min(250, Math.max(0.5, J.f*Math.min(1.4, Math.max(0.7, Math.sqrt(tau/dt)))));
+    J.R = Math.max(20, Math.round(30*J.f)); J.H = Math.max(40, Math.round(60*J.f));
   }
   const n = J.shapes.length, el = (performance.now() - J.t0)/1000;
-  $('fill').style.width = (100*n/J.N).toFixed(1) + '%';
-  $('sTerms').textContent = n + ' / ' + J.N; $('sTime').textContent = fmtTime(el);
-  $('sEta').textContent = n > 2 ? fmtTime(el/n*(J.N - n)*1.15) : '…';
+  $('fill').style.width = Math.min(100, 100*el/J.B).toFixed(1) + '%';
+  $('sTerms').textContent = n; $('sTime').textContent = fmtTime(el);
+  $('sEta').textContent = fmtTime(Math.max(0, J.B - el));
   $('sErr').textContent = (255*Math.sqrt(J.sumErr/(J.w*J.h*3))).toFixed(1);
-  if (performance.now() - J.lastDraw > 110){
+  if (performance.now() - J.lastDraw > 150){
     drawFloat($('cvLive'), J.w, J.h, J.C); J.lastDraw = performance.now();
     if (n) $('tick').innerHTML = termHTML(J.shapes[n - 1], n);
   }
-  if (n < J.N && !J.stop && J.stall <= 40) setTimeout(loop, 0); else finish();
+  if (n < J.N && !J.stop && J.stall <= 60 && el < J.B) setTimeout(loop, 0); else finish();
 }
 function finish(){
-  const J = job; J.running = false;
-  const n = J.shapes.length, el = (performance.now() - J.t0)/1000;
-  if (n >= 10 && el > 0.05) RATE = el/(n*(J.R + J.H)*Math.max(J.w, J.h)**2); drawFloat($('cvLive'), J.w, J.h, J.C);
+  const J = job; J.running = false; drawFloat($('cvLive'), J.w, J.h, J.C);
   if (J.shapes.length) $('tick').innerHTML = termHTML(J.shapes[J.shapes.length - 1], J.shapes.length);
   $('sEta').textContent = 'done'; $('fill').style.width = '100%';
   $('run').disabled = true; $('run').classList.remove('stop'); $('run').textContent = 'Evaluating the formula…';
@@ -553,7 +550,7 @@ function writeFormula(J, W, Hh){
   const eqs = [
     'F(t) = \\left\\lfloor 255\\, e^{-e^{-1000t}}\\, |t|^{e^{-e^{1000(t-1)}}} \\right\\rfloor, \\qquad x = \\frac{m - ' + W/2 + '}{' + half + '}, \\quad y = \\frac{' + Hh/2 + ' - n}{' + half + '},',
     'H_v(x,y) = B_v(x,y)\\prod_{j=1}^{' + N + '}\\bigl(1 - M_j(x,y)\\bigr) + \\sum_{j=1}^{' + N + '} C_j(v)\\, M_j(x,y) \\prod_{i=j+1}^{' + N + '}\\bigl(1 - M_i(x,y)\\bigr),',
-    'E(x,y;a,b,p,q,\\theta) = e^{-e^{' + K + '\\left(\\frac{\\left((x-a)\\cos\\theta + (y-b)\\sin\\theta\\right)^2}{p^2} + \\frac{\\left((y-b)\\cos\\theta - (x-a)\\sin\\theta\\right)^2}{q^2} - 1\\right)}},',
+    'E(x,y;a,b,p,q,\\theta,k) = e^{-e^{k\\left(\\frac{\\left((x-a)\\cos\\theta + (y-b)\\sin\\theta\\right)^2}{p^2} + \\frac{\\left((y-b)\\cos\\theta - (x-a)\\sin\\theta\\right)^2}{q^2} - 1\\right)}},',
     'B_v(x,y) = ' + fracTeX(bgq[0]) + ' + ' + fracTeX(bgq[1]) + 'x + ' + fracTeX(bgq[2]) + 'y,'
   ];
   const lines = J.shapes.map((sh, j) => ({sh, j: j + 1, q: quad(Math.round(sh.col[0]*40), Math.round(sh.col[1]*40), Math.round(sh.col[2]*40), 40)}));
@@ -562,10 +559,10 @@ function writeFormula(J, W, Hh){
   const intro = 'This image shows ' + N + ' soft ellipses laid over a linear gradient. For \\(m = 1, 2, 3, \\ldots, ' + W + '\\) and \\(n = 1, 2, 3, \\ldots, ' + Hh + '\\), the color of the pixel of the row \\(n\\) and the column \\(m\\) is \\(\\mathrm{rgb}\\bigl(F(H_0(x,y)),\\ F(H_1(x,y)),\\ F(H_2(x,y))\\bigr)\\), where';
   const f = $('formula');
   f.innerHTML = '<p>' + intro + '</p>' + eqs.map(e => '<div class="eq">\\[' + e + '\\]</div>').join('') +
-    '<p>and for \\(j = 1, 2, \\ldots, ' + N + '\\), \\(M_j(x,y) = E(x, y; a_j, b_j, p_j, q_j, \\theta_j)\\), where</p>' +
+    '<p>and for \\(j = 1, 2, \\ldots, ' + N + '\\), \\(M_j(x,y) = E(x, y; a_j, b_j, p_j, q_j, \\theta_j, k_j)\\), where</p>' +
     '<div class="params">' + lines.map(L => '<div>' + termHTML(L.sh, L.j) + ', &nbsp;<i>C</i><sub>' + L.j + '</sub>(<i>v</i>) = ' + fracHTML(L.q) + '</div>').join('') + '</div>';
   $('latexOut').value = ['% ' + title, '\\mathrm{rgb}\\bigl(F(H_0(x,y)), F(H_1(x,y)), F(H_2(x,y))\\bigr),\\ m=1,\\ldots,' + W + ',\\ n=1,\\ldots,' + Hh].concat(eqs)
-    .concat(lines.map(L => 'M_{' + L.j + '} = E(x,y;' + [L.sh.a, L.sh.b, L.sh.p, L.sh.q, L.sh.t].map(v => num(v, true)).join(',') + '),\\quad C_{' + L.j + '}(v) = ' + fracTeX(L.q))).join('\n');
+    .concat(lines.map(L => 'M_{' + L.j + '} = E(x,y;' + [L.sh.a, L.sh.b, L.sh.p, L.sh.q, L.sh.t].map(v => num(v, true)).join(',') + ',' + L.sh.k + '),\\quad C_{' + L.j + '}(v) = ' + fracTeX(L.q))).join('\n');
   $('result').hidden = false;
   typeset(f);
 }

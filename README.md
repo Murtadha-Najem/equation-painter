@@ -10,4 +10,4 @@ Each pixel (m, n) gets the colour rgb(F(H0), F(H1), F(H2)). H_v is a linear grad
 
 A greedy search adds one ellipse at a time: random tries, biased toward the pixels furthest from the picture, then small nudges to the best one. Constants are rounded to two decimals during the search, and the final picture is computed again from the printed numbers, so the formula shown is exactly the one that drew it.
 
-The formula stores no pixels. Each term is eight numbers. The search does read the picture to measure the difference, as any automatic fit must.
+The formula stores no pixels. Each term is nine numbers. The search does read the picture to measure the difference, as any automatic fit must.
