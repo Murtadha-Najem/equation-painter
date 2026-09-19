@@ -446,7 +446,12 @@ function setAxes(w, h){
 }
 function previewSource(){
   if (job && job.running) return;
-  const P = prepare(srcImg, 160); drawFloat($('cvTarget'), P.w, P.h, P.T);
+  drawSource();
+}
+function drawSource(){               // the source inset shows the picture itself, not the reduced copy the search reads
+  const iw = srcImg.naturalWidth || srcImg.width, ih = srcImg.naturalHeight || srcImg.height, s = Math.min(1, 600/Math.max(iw, ih));
+  const cv = $('cvTarget'); cv.width = Math.round(iw*s); cv.height = Math.round(ih*s);
+  const g = cv.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(srcImg, 0, 0, cv.width, cv.height);
 }
 const fmtTime = s => s < 60 ? Math.round(s) + 's' : Math.floor(s/60) + 'm ' + String(Math.round(s % 60)).padStart(2, '0') + 's';
 const num = (v, tex) => { const s = String(Number(v.toFixed(2))); return tex ? s : s.replace('-', '−'); };
@@ -469,7 +474,7 @@ function start(){
     J.err[j*J.w + i] = e; J.sumErr += e;
   }
   job = J;
-  setAxes(J.w, J.h); drawFloat($('cvTarget'), J.w, J.h, J.T); drawFloat($('cvLive'), J.w, J.h, J.C);
+  setAxes(J.w, J.h); drawSource(); drawFloat($('cvLive'), J.w, J.h, J.C);
   $('run').textContent = 'Stop and write the formula'; $('run').classList.add('stop');
   $('tick').textContent = 'B_v(x, y): a linear gradient';
   locks().forEach(el => el.disabled = true);
@@ -520,6 +525,7 @@ function renderFinal(J){
     if (k < J.shapes.length) return setTimeout(chunk, 0);
     const cv = document.createElement('canvas'); drawFloat(cv, W, Hh, O.C);
     $('finalImg').src = cv.toDataURL('image/png');
+    const live = $('cvLive'); live.width = W; live.height = Hh; live.getContext('2d').drawImage(cv, 0, 0);   // stage switches to the full-size result
     writeFormula(J, W, Hh);
     $('run').disabled = false; $('run').textContent = 'Paint the equation';
     locks().forEach(el => el.disabled = false); refreshLevelUI();
