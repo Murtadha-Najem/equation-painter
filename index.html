@@ -55,6 +55,7 @@ nav a{padding:6px 12px;border-radius:8px;color:var(--muted);text-decoration:none
 nav a[aria-current]{background:var(--ink);color:var(--ground)}
 nav a:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .bar{align-items:center}
+.styles{grid-template-columns:repeat(3,minmax(0,1fr))!important}
 .vidrow{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .vidrow video{max-width:260px;border-radius:6px;border:1px solid var(--line)}
 /* hero */
@@ -219,12 +220,21 @@ html{-webkit-text-size-adjust:100%}body{margin:0}img{max-width:100%}[hidden]{dis
       </div>
 
       <div class="step">
-        <div class="step-h"><span class="mono">02</span>Title</div>
+        <div class="step-h"><span class="mono">02</span>Style</div>
+        <div class="levels styles" id="styles" role="radiogroup" aria-label="Drawing style">
+          <div class="lv"><input type="radio" name="style" id="st_ell" value="ellipses" checked><label for="st_ell"><b>Colour</b><small>soft ellipses,</small><small>every pixel in rgb</small></label></div>
+          <div class="lv"><input type="radio" name="style" id="st_lin" value="lines"><label for="st_lin"><b>Lines</b><small>thousands of thin</small><small>segments in ink</small></label></div>
+          <div class="lv"><input type="radio" name="style" id="st_cir" value="circles"><label for="st_cir"><b>Circles</b><small>a family of rings</small><small>in ink</small></label></div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-h"><span class="mono">03</span>Title</div>
         <div class="titlerow"><input id="title" type="text" maxlength="60" value="Sunset" placeholder="What the picture shows, e.g. Portrait" autocomplete="off" aria-label="Title on the post"></div>
       </div>
 
       <div class="step">
-        <div class="step-h"><span class="mono">03</span>Detail and time</div>
+        <div class="step-h"><span class="mono">04</span>Detail and time</div>
         <div class="levels" id="levels" role="radiogroup" aria-label="Detail level"></div>
         <div class="custom" id="custom" hidden>
           <div class="slider" style="grid-column:1/-1"><div class="top"><label for="minutes">Time budget</label><output id="minutesOut">5 min</output></div><input type="range" id="minutes" min="1" max="60" step="1" value="5"></div>
@@ -520,6 +530,103 @@ function syncHalf(J, sh){
   }
 }
 
+/* ---------------- ink styles: lines and circles ----------------
+   The picture becomes darkness d = 1 - brightness, stretched to use the full range. Each new stroke (a segment or a
+   circle) goes where the remaining darkness along it is largest; drawing it takes ink INK off every pixel it crosses.
+   Output strokes are black, width 0.55 of a read pixel and opacity INK/0.55, which lays down the same ink per area. */
+const INK = {lines: 0.06, circles: 0.05};
+function inkTarget(J){
+  const n = J.w*J.h, D = new Float32Array(n), vals = [];
+  for (let i = 0; i < n; i++){ const p = i*3; D[i] = 1 - (0.299*J.T[p] + 0.587*J.T[p+1] + 0.114*J.T[p+2]); if (i % 7 === 0) vals.push(D[i]); }
+  vals.sort((a, b) => a - b);
+  const lo = vals[Math.floor(vals.length*0.02)], hi = vals[Math.floor(vals.length*0.98)] || 1;
+  for (let i = 0; i < n; i++){ const t = Math.min(1, Math.max(0, (D[i] - lo)/Math.max(0.05, hi - lo))); D[i] = Math.pow(t, 1.25); }
+  return D;
+}
+// walk a stroke through the read picture in steps of 0.7 px; f(index) for every pixel it crosses once
+function walkLine(J, sh, f){
+  const h2 = J.half, x1 = sh.x1*h2 + J.w/2 - 1, y1 = J.h/2 - 1 - sh.y1*h2, x2 = sh.x2*h2 + J.w/2 - 1, y2 = J.h/2 - 1 - sh.y2*h2;
+  const L = Math.hypot(x2 - x1, y2 - y1), n = Math.max(2, Math.ceil(L/0.7)); let last = -1, cnt = 0;
+  for (let i = 0; i <= n; i++){
+    const u = i/n, xi = Math.round(x1 + (x2 - x1)*u), yi = Math.round(y1 + (y2 - y1)*u);
+    if (xi < 0 || yi < 0 || xi >= J.w || yi >= J.h) continue;
+    const q = yi*J.w + xi; if (q === last) continue; last = q; f(q); cnt++;
+  }
+  return cnt;
+}
+function walkCircle(J, sh, f){
+  const h2 = J.half, cx = sh.a*h2 + J.w/2 - 1, cy = J.h/2 - 1 - sh.b*h2, R = sh.r*h2;
+  const n = Math.max(8, Math.ceil(2*Math.PI*R/0.7)); let last = -1, first = -1, cnt = 0;
+  for (let i = 0; i < n; i++){
+    const u = 2*Math.PI*i/n, xi = Math.round(cx + R*Math.cos(u)), yi = Math.round(cy + R*Math.sin(u));
+    if (xi < 0 || yi < 0 || xi >= J.w || yi >= J.h) continue;
+    const q = yi*J.w + xi; if (q === last || q === first) continue; if (first < 0) first = q; last = q; f(q); cnt++;
+  }
+  return cnt;
+}
+function inkScore(J, sh){
+  let sum = 0; const R = J.res;
+  const n = (J.style === 'lines' ? walkLine : walkCircle)(J, sh, q => { sum += R[q]; });
+  return n < 3 ? -1 : sum/n;
+}
+function inkQuant(J, sh){
+  if (J.style === 'lines'){ sh.x1 = r3(sh.x1); sh.y1 = r3(sh.y1); sh.x2 = r3(sh.x2); sh.y2 = r3(sh.y2); }
+  else { sh.a = r3(sh.a); sh.b = r3(sh.b); sh.r = Math.max(1.5/J.half, Math.min(2, r3(sh.r))); }
+  return sh;
+}
+function inkStep(J){
+  const {w, h, X, Y, rng, res} = J, n = w*h, lines = J.style === 'lines';
+  let acc = 0; for (let i = 0; i < n; i++){ acc += Math.max(0, res[i]); J.cum[i] = acc; }
+  if (acc < 1e-6) return false;
+  const xr = (w/2)/J.half, frac = Math.min(1, (performance.now() - J.t0)/1000/J.B);
+  let best = null, bestS = -1;
+  for (let r = 0; r < J.R; r++){
+    const idx = sampleIndex(J), px = X[idx % w], py = Y[(idx/w) | 0];
+    let sh;
+    if (lines){
+      const th = rng()*PI, len = 0.15 + rng()*rng()*2.4*(1.2 - 0.7*frac), at = rng();
+      const ux = Math.cos(th), uy = Math.sin(th);
+      sh = {x1: px - ux*len*at, y1: py - uy*len*at, x2: px + ux*len*(1 - at), y2: py + uy*len*(1 - at)};
+    } else {
+      const rad = 0.02 + rng()*rng()*0.7*(1.2 - 0.8*frac), ang = rng()*2*PI;
+      sh = {a: px - rad*Math.cos(ang), b: py - rad*Math.sin(ang), r: rad};           // a circle that passes through the chosen dark pixel
+    }
+    inkQuant(J, sh); const sc = inkScore(J, sh);
+    if (sc > bestS){ best = sh; bestS = sc; }
+  }
+  for (let hh = 0; hh < J.Hn; hh++){
+    for (let m = 0; m < 12; m++){
+      const b = best, sd = 0.02;
+      const sh = lines ? {x1: b.x1 + gauss(rng)*sd, y1: b.y1 + gauss(rng)*sd, x2: b.x2 + gauss(rng)*sd, y2: b.y2 + gauss(rng)*sd}
+                       : {a: b.a + gauss(rng)*sd, b: b.b + gauss(rng)*sd, r: b.r*Math.exp(gauss(rng)*0.08)};
+      inkQuant(J, sh); const sc = inkScore(J, sh);
+      if (sc > bestS){ best = sh; bestS = sc; }
+    }
+  }
+  if (bestS < J.ink*0.55) return false;
+  const a = J.ink;
+  (lines ? walkLine : walkCircle)(J, best, q => { const o = res[q]; res[q] = Math.max(-0.4, o - a); J.sumErr += res[q]*res[q] - o*o; });
+  J.shapes.push(best); drawInk(J.Dctx, J, best, J.Dscale);
+  return true;
+}
+// draw one stroke on a canvas whose pixel scale is sc pixels per plane unit, origin at the picture's centre
+function drawInk(g, J, sh, sc){
+  const cx = g.canvas.width/2, cy = g.canvas.height/2;
+  g.beginPath();
+  if (J.style === 'lines'){ g.moveTo(cx + sh.x1*sc, cy - sh.y1*sc); g.lineTo(cx + sh.x2*sc, cy - sh.y2*sc); }
+  else { g.moveTo(cx + (sh.a + sh.r)*sc, cy - sh.b*sc); g.arc(cx + sh.a*sc, cy - sh.b*sc, sh.r*sc, 0, 2*PI); }
+  g.stroke();
+}
+function inkCanvas(J, W, H){               // a white canvas set up with the stroke width and opacity of the formula
+  const c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d');
+  g.fillStyle = '#ffffff'; g.fillRect(0, 0, W, H);
+  const sc = (W/2)/((J.w/2)/J.half);                 // pixels per plane unit
+  g.strokeStyle = '#000000'; g.globalAlpha = inkAlpha(J); g.lineWidth = inkWidth(J)*sc; g.lineCap = 'round';
+  return {c, g, sc};
+}
+const inkWidth = J => r3(0.55/J.half);               // stroke width in plane units: 0.55 of a read pixel
+const inkAlpha = J => Math.round(J.ink/0.55*100)/100;
+
 /* ---------------- drawing ---------------- */
 function surface(J, long){              // same x, y as the formula, at a finer pixel grid, starting from the gradient
   const s = long/Math.max(J.w, J.h), W = Math.round(J.w*s/2)*2, Hh = Math.round(J.h*s/2)*2, cs = coords(W, Hh);
@@ -557,19 +664,24 @@ function drawSource(){               // the source inset shows the picture itsel
 const fmtTime = s => s < 60 ? Math.round(s) + 's' : Math.floor(s/60) + 'm ' + String(Math.round(s % 60)).padStart(2, '0') + 's';
 const num = (v, tex) => { const s = String(Number(v.toFixed(3))); return tex ? s : s.replace('-', '−'); };
 function termHTML(sh, j){
+  if (sh.x1 !== undefined) return '<i>L</i><sub>' + j + '</sub>: (' + [sh.x1, sh.y1].map(v => num(v, false)).join(', ') + ') to (' + [sh.x2, sh.y2].map(v => num(v, false)).join(', ') + ')';
+  if (sh.r !== undefined) return '<i>C</i><sub>' + j + '</sub>: centre (' + [sh.a, sh.b].map(v => num(v, false)).join(', ') + '), radius ' + num(sh.r, false);
   return '<i>M</i><sub>' + j + '</sub>: (' + [sh.a, sh.b, sh.p, sh.q, sh.t, sh.bend].map(v => num(v, false)).join(', ') + ', ' + sh.k + ')';
 }
 
 /* ---------------- run ---------------- */
-const locks = () => document.querySelectorAll('input[name=level], #minutes, #file');   // the title stays editable
+const locks = () => document.querySelectorAll('input[name=level], input[name=style], #minutes, #file');   // the title stays editable
 function start(){
   if (!srcImg || !srcImg.complete) return;
   if (job && job.running){ job.stop = true; return; }
+  const style = document.querySelector('input[name=style]:checked').value;
+  if (style !== 'ellipses') return startInk(style);
   const lv = currentLevel(), P = prepare(srcImg, lv.L), cs = coords(P.w, P.h), n = P.w*P.h;
   const J = Object.assign({}, P, cs, {B: lv.B, shapes: [], running: true, stop: false, stall: 0, rng: mulberry32(20260919), R: 64, Hn: 10, f: 1,
     cap: Math.round(n/40),
     C: new Float32Array(n*3), err: new Float32Array(n), cum: new Float64Array(n), bm: new Float32Array(n), bu: new Float32Array(n), bw: new Float32Array(n),
     sumErr: 0, t0: performance.now(), lastDraw: 0});
+  J.style = 'ellipses';
   J.bg = fitBackground(J);
   for (let j = 0; j < J.h; j++) for (let i = 0; i < J.w; i++){
     const p = (j*J.w + i)*3; let e = 0;
@@ -586,29 +698,46 @@ function start(){
   locks().forEach(el => el.disabled = true);
   loop();
 }
+function startInk(style){
+  const lv = currentLevel(), P = prepare(srcImg, lv.L), cs = coords(P.w, P.h), n = P.w*P.h;
+  const J = Object.assign({}, P, cs, {style, B: lv.B, shapes: [], running: true, stop: false, stall: 0, rng: mulberry32(20260919), R: 48, Hn: 6, f: 1,
+    cap: Math.round(n/(style === 'lines' ? 4 : 7)), ink: INK[style], cum: new Float64Array(n), sumErr: 0, t0: performance.now(), lastDraw: 0});
+  J.res = inkTarget(J); for (let i = 0; i < n; i++) J.sumErr += J.res[i]*J.res[i];
+  const Dw = 900, Dh = Math.round(900*J.h/J.w), ic = inkCanvas(J, Dw, Dh);
+  J.Dctx = ic.g; J.Dscale = ic.sc; J.Dcanvas = ic.c;
+  job = J;
+  setAxes(J.w, J.h); drawSource(); showInkLive(J);
+  $('run').textContent = 'Stop and write the formula'; $('run').classList.add('stop');
+  $('tick').textContent = style === 'lines' ? 'black line segments on white' : 'black circles on white';
+  locks().forEach(el => el.disabled = true);
+  loop();
+}
+function showInkLive(J){ const cv = $('cvLive'); cv.width = J.Dcanvas.width; cv.height = J.Dcanvas.height; cv.getContext('2d').drawImage(J.Dcanvas, 0, 0); }
 function loop(){
   const J = job, sliceEnd = performance.now() + 30, stopAt = J.B*0.94 - 3;      // leave a little for the final render
   while (!J.stop && J.shapes.length < J.cap && performance.now() < sliceEnd && (performance.now() - J.t0)/1000 < stopAt){
-    const t = performance.now(), ok = step(J), dt = Math.max(1e-4, (performance.now() - t)/1000);
+    const t = performance.now(), ok = J.style === 'ellipses' ? step(J) : inkStep(J), dt = Math.max(1e-4, (performance.now() - t)/1000);
     if (!ok){ if (++J.stall > 40) break; } else J.stall = 0;
     // spread the budget evenly over the terms still allowed: faster than needed means search each term harder
     const left = stopAt - (performance.now() - J.t0)/1000, tau = left/Math.max(1, J.cap - J.shapes.length);
     J.f = Math.min(40, Math.max(1, J.f*Math.min(1.3, Math.max(0.75, Math.sqrt(tau/dt)))));
-    J.R = Math.round(64*J.f); J.Hn = Math.round(10*Math.sqrt(J.f));
+    if (J.style === 'ellipses'){ J.R = Math.round(64*J.f); J.Hn = Math.round(10*Math.sqrt(J.f)); }
+    else { J.R = Math.round(48*J.f); J.Hn = Math.round(6*Math.sqrt(J.f)); }
   }
   const n = J.shapes.length, el = (performance.now() - J.t0)/1000;
   $('fill').style.width = Math.min(100, 100*el/J.B).toFixed(1) + '%';
   $('sTerms').textContent = n + ' / ' + J.cap; $('sTime').textContent = fmtTime(el);
   $('sEta').textContent = fmtTime(Math.max(0, J.B - el));
-  $('sErr').textContent = (255*Math.sqrt(J.sumErr/(J.w*J.h*3))).toFixed(1);
+  $('sErr').textContent = (255*Math.sqrt(J.sumErr/(J.w*J.h*(J.style === 'ellipses' ? 3 : 1)))).toFixed(1);
   if (performance.now() - J.lastDraw > 150){
-    drawFast($('cvLive'), J.D); J.lastDraw = performance.now();
+    if (J.style === 'ellipses') drawFast($('cvLive'), J.D); else showInkLive(J);
+    J.lastDraw = performance.now();
     if (n) $('tick').innerHTML = termHTML(J.shapes[n - 1], n);
   }
   if (!J.stop && J.stall <= 40 && el < stopAt && n < J.cap) setTimeout(loop, 0); else finish();
 }
 function finish(){
-  const J = job; J.running = false; drawFast($('cvLive'), J.D);
+  const J = job; J.running = false; if (J.style === 'ellipses') drawFast($('cvLive'), J.D); else showInkLive(J);
   if (J.shapes.length) $('tick').innerHTML = termHTML(J.shapes[J.shapes.length - 1], J.shapes.length);
   $('sEta').textContent = 'done'; $('fill').style.width = '100%';
   $('run').disabled = true; $('run').classList.remove('stop'); $('run').textContent = 'Evaluating the formula…';
@@ -622,6 +751,17 @@ async function renderFinal(J){
   if (MathJax.startup && MathJax.startup.promise) await MathJax.startup.promise;
   let L = null;
   for (const picH of [864, 820]){ L = await layoutPost(J, picH); if (L.fits) break; }
+  if (J.style !== 'ellipses'){
+    const ic = inkCanvas(J, L.W, L.Hh);                 // the drawing, at the exact size it is printed
+    J.shapes.forEach(sh => drawInk(ic.g, J, sh, ic.sc));
+    const live = $('cvLive'); live.width = L.W; live.height = L.Hh; live.getContext('2d').drawImage(ic.c, 0, 0);
+    J.post = {pc: ic.c, L, picH: L.picH, W: L.W, H: L.Hh};
+    await showPost(J); writeFormula(J, L.W, L.Hh); storeText(J);
+    $('vidrow').hidden = true; $('makeVid').textContent = 'Make the video';
+    $('result').hidden = false; $('run').disabled = false; $('run').textContent = 'Paint the equation';
+    locks().forEach(el => el.disabled = false); refreshLevelUI();
+    return;
+  }
   const O = surface(J, L.long);       // the picture, evaluated at the exact size it is printed
   let k = 0;
   (function chunk(){
@@ -651,7 +791,24 @@ async function showPost(J){
   if (cap < J.shapes.length){ note.hidden = false; note.textContent = 'The square holds the first ' + cap + ' of ' + J.shapes.length + ' terms; the rest are in the full formula below and in the LaTeX source.'; }
   else note.hidden = true;
 }
+function inkFrame(J){ return {xr: r3((J.w/2)/J.half), yr: r3((J.h/2)/J.half)}; }
 function formulaText(J, W, Hh){
+  if (J.style !== 'ellipses'){
+    const {xr, yr} = inkFrame(J), lines = J.style === 'lines', f = v => String(Number(v.toFixed(4)));
+    const out = [
+      '# ' + postTitle() + ' in ' + J.shapes.length + (lines ? ' Line Segments' : ' Circles') + ', drawn by Equation Painter (murtadha203.github.io/equation-painter)',
+      lines ? '# The k-th row gives the endpoints (X1, Y1) and (X2, Y2) of one black segment.' : '# The k-th row gives the centre (A, B) and radius R of one black circle.',
+      '# Change the rule on the right of any line, the stroke, or any number, and see what happens.',
+      'mode: ' + (lines ? 'segments' : 'circles'),
+      'size: ' + W + ' x ' + Hh,
+      'window: ' + (-xr) + ' ' + xr + ' ' + (-yr) + ' ' + yr,
+      'linewidth: ' + inkWidth(J),
+      'alpha: ' + inkAlpha(J)];
+    if (lines) out.push('X1 = x1', 'Y1 = y1', 'X2 = x2', 'Y2 = y2', 'terms: x1 y1 x2 y2');
+    else out.push('A = a', 'B = b', 'R = r', 'terms: a b r');
+    J.shapes.forEach(sh => out.push((lines ? [sh.x1, sh.y1, sh.x2, sh.y2] : [sh.a, sh.b, sh.r]).map(f).join(' ')));
+    return out.join('\n') + '\n';
+  }
   const half = Math.max(W, Hh)/2, f = v => String(Number(v.toFixed(4)));
   const pk = k => 'pick(v, ' + [0, 1, 2].map(c => f(J.bg[c][k]/80)).join(', ') + ')';
   const lines = [
@@ -691,8 +848,9 @@ async function makeVideo(J){
   const S = 1080, sc = S/1440, L = J.post.L, fps = 30, grow = 8*fps, hold = 2*fps, N = J.shapes.length;
   const cv = document.createElement('canvas'); cv.width = S; cv.height = S; const g = cv.getContext('2d');
   const post = $('postImg');
-  const O = surface(J, Math.round(Math.max(J.post.W, J.post.H)*sc));
-  const oc = document.createElement('canvas');
+  const ink = J.style !== 'ellipses';
+  const O = ink ? null : surface(J, Math.round(Math.max(J.post.W, J.post.H)*sc));
+  const oc = ink ? inkCanvas(J, Math.round(J.post.W*sc), Math.round(J.post.H*sc)) : document.createElement('canvas');
   const rx = Math.round((1440 - J.post.W)/2*sc), rw = Math.round(J.post.W*sc), rh = Math.round(J.post.H*sc);
   const types = ['video/mp4;codecs=avc1.42E01E', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm'];
   const type = types.find(t => window.MediaRecorder && MediaRecorder.isTypeSupported(t));
@@ -700,12 +858,12 @@ async function makeVideo(J){
   const stream = cv.captureStream(fps), rec = new MediaRecorder(stream, {mimeType: type, videoBitsPerSecond: 10e6}), chunks = [];
   rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
   const done = new Promise(r => rec.onstop = r);
-  const frame = () => { g.drawImage(post, 0, 0, S, S); drawFast(oc, O); g.drawImage(oc, rx, 0, rw, rh); };
+  const frame = () => { g.drawImage(post, 0, 0, S, S); if (ink) g.drawImage(oc.c, rx, 0, rw, rh); else { drawFast(oc, O); g.drawImage(oc, rx, 0, rw, rh); } };
   let painted = 0; frame(); rec.start();
   const t0 = performance.now();
   for (let f = 1; f <= grow + hold; f++){
     const upto = f >= grow ? N : Math.round(N*(Math.exp(3*f/grow) - 1)/(Math.exp(3) - 1));
-    for (; painted < upto; painted++) paintTerm(O, J.shapes[painted]);
+    for (; painted < upto; painted++){ if (ink) drawInk(oc.g, J, J.shapes[painted], oc.sc); else paintTerm(O, J.shapes[painted]); }
     frame();
     b.textContent = 'Recording ' + Math.ceil((grow + hold - f)/fps) + ' s';
     const wait = t0 + f*1000/fps - performance.now(); await new Promise(r => setTimeout(r, Math.max(0, wait)));
@@ -749,6 +907,17 @@ const fracTeX = q => q.D === 1 ? '(' + polyText(q.P, true) + ')' : '\\frac{' + p
 const fracHTML = q => q.D === 1 ? '(' + polyText(q.P, false) + ')' : '(' + polyText(q.P, false) + ')/' + q.D;
 
 function formulaParts(J, W, Hh){
+  if (J.style !== 'ellipses'){
+    const N = J.shapes.length, {xr, yr} = inkFrame(J), lines = J.style === 'lines';
+    const eqs = [lines
+      ? '(x, y) \\in \\left[-' + xr + ', ' + xr + '\\right] \\times \\left[-' + yr + ', ' + yr + '\\right], \\qquad \\text{segment } k:\\ \\bigl\\{(1 - s)(A_k, B_k) + s\\,(C_k, D_k) : 0 \\le s \\le 1\\bigr\\}, \\qquad \\text{opacity } ' + inkAlpha(J) + ', \\quad \\text{width } ' + inkWidth(J) + '.'
+      : '(x, y) \\in \\left[-' + xr + ', ' + xr + '\\right] \\times \\left[-' + yr + ', ' + yr + '\\right], \\qquad (x - A_k)^2 + (y - B_k)^2 = R_k^2, \\qquad \\text{opacity } ' + inkAlpha(J) + ', \\quad \\text{width } ' + inkWidth(J) + '.'];
+    const rows = J.shapes.map((sh, j) => ({sh, j: j + 1}));
+    return {N, eqs, lines: rows, title: postTitle() + ' in ' + N + (lines ? ' Line Segments' : ' Circles'),
+      intro: lines
+        ? 'This image shows ' + N + ' black line segments, drawn one over another on white. For k = 1, 2, 3, …, ' + N + ', the k-th segment joins (Aₖ, Bₖ) to (Cₖ, Dₖ), as listed below, where'
+        : 'This image shows ' + N + ' black circles, drawn one over another on white. For k = 1, 2, 3, …, ' + N + ', the k-th circle has centre (Aₖ, Bₖ) and radius Rₖ, as listed below, where'};
+  }
   const N = J.shapes.length, half = Math.max(W, Hh)/2;
   const bgq = [0,1,2].map(k => quad(J.bg[0][k], J.bg[1][k], J.bg[2][k], 80));
   const Bv = [fracTeX(bgq[0])].concat([[1, 'x'], [2, 'y']].filter(([k]) => bgq[k].P.some(c => c)).map(([k, v]) => fracTeX(bgq[k]) + v)).join(' + ');
@@ -765,6 +934,13 @@ function formulaParts(J, W, Hh){
            ', the color of the pixel of the row n and the column m is rgb(F(H₀(x, y)), F(H₁(x, y)), F(H₂(x, y))), where'};
 }
 function writeFormula(J, W, Hh){
+  if (J.style !== 'ellipses'){
+    const {N, eqs, lines, title, intro} = formulaParts(J, W, Hh), f = $('formula');
+    f.innerHTML = '<p>' + intro + '</p>' + eqs.map(e => '<div class="eq">\\[' + e + '\\]</div>').join('') +
+      '<div class="params">' + lines.map(L => '<div>' + entryText(L) + '</div>').join('') + '</div>';
+    $('latexOut').value = ['% ' + title].concat(eqs).concat(lines.map(L => entryText(L).replace(/\u2212/g, '-'))).join('\n');
+    typeset(f); return;
+  }
   const {N, eqs, lines, title} = formulaParts(J, W, Hh);
   const intro = 'This image shows ' + N + ' soft ellipses laid over a linear gradient. For \\(m = 1, 2, 3, \\ldots, ' + W + '\\) and \\(n = 1, 2, 3, \\ldots, ' + Hh + '\\), the color of the pixel of the row \\(n\\) and the column \\(m\\) is \\(\\mathrm{rgb}\\bigl(F(H_0(x,y)),\\ F(H_1(x,y)),\\ F(H_2(x,y))\\bigr)\\), where';
   const f = $('formula');
@@ -793,7 +969,10 @@ function wrap(g, text, maxW){
   for (const w of words){ const t = line ? line + ' ' + w : w; if (g.measureText(t).width > maxW && line){ out.push(line); line = w; } else line = t; }
   if (line) out.push(line); return out;
 }
-function entryText(L){ return L.j + ': (' + [L.sh.a, L.sh.b, L.sh.p, L.sh.q, L.sh.t, L.sh.bend].map(v => num(v, false)).join(', ') + ', ' + L.sh.k + ')  ' + L.cols.map(fracHTML).join('; '); }
+function entryText(L){
+  if (L.sh.x1 !== undefined) return L.j + ': (' + num(L.sh.x1, false) + ', ' + num(L.sh.y1, false) + '), (' + num(L.sh.x2, false) + ', ' + num(L.sh.y2, false) + ')';
+  if (L.sh.r !== undefined) return L.j + ': (' + num(L.sh.a, false) + ', ' + num(L.sh.b, false) + ', ' + num(L.sh.r, false) + ')';
+  return L.j + ': (' + [L.sh.a, L.sh.b, L.sh.p, L.sh.q, L.sh.t, L.sh.bend].map(v => num(v, false)).join(', ') + ', ' + L.sh.k + ')  ' + L.cols.map(fracHTML).join('; '); }
 async function layoutPost(J, picH){
   // picture size inside the square, then everything that must fit under it
   const long = Math.round(Math.max(J.w, J.h)*Math.min(POST/J.w, picH/J.h)), s = long/Math.max(J.w, J.h), W = Math.round(J.w*s/2)*2, Hh = Math.round(J.h*s/2)*2;   // same grid surface() builds
@@ -801,7 +980,10 @@ async function layoutPost(J, picH){
   g.font = '21px ' + SERIF; const introLines = wrap(g, parts.intro, maxW);
   const eqImgs = [];
   for (const e of parts.eqs){ let m = await mathImage(e, 9.5); if (m.w > maxW){ m = await mathImage(e, 9.5*maxW/m.w); } eqImgs.push(m); }
-  const head = await mathImage('\\text{and for } j = 1, 2, \\ldots, ' + parts.N + '\\text{ the constants are listed as}\\quad j:\\ (a_j, b_j, p_j, q_j, \\theta_j, \\beta_j, k_j)\\ \\ \\alpha_j(v);\\ \\gamma_j(v);\\ \\delta_j(v)', 8.5);
+  const headTex = J.style === 'lines' ? '\\text{and the endpoints are listed as}\\quad k:\\ (A_k, B_k),\\ (C_k, D_k)'
+    : J.style === 'circles' ? '\\text{and the circles are listed as}\\quad k:\\ (A_k, B_k, R_k)'
+    : '\\text{and for } j = 1, 2, \\ldots, ' + parts.N + '\\text{ the constants are listed as}\\quad j:\\ (a_j, b_j, p_j, q_j, \\theta_j, \\beta_j, k_j)\\ \\ \\alpha_j(v);\\ \\gamma_j(v);\\ \\delta_j(v)';
+  const head = await mathImage(headTex, 8.5);
   let y = Hh + 22 + 30 + 10 + introLines.length*28 + 6;
   for (const m of eqImgs) y += m.h + 4;
   y += 8 + head.h + 6;                           // the heading line for the constants

@@ -128,7 +128,7 @@ H = (1 + v)/4*A + (1 - A)/10</pre>
     </section>
     <section>
       <h3>Families of circles and lines</h3>
-      <p>For every k in a range, a circle with centre (A, B) and radius R, or a line segment from (X1, Y1) to (X2, Y2). Helpers may use k. <code>window: auto</code> frames the drawing.</p>
+      <p>For every k in a range, or every row of a <code>terms:</code> table, a circle with centre (A, B) and radius R, or a line segment from (X1, Y1) to (X2, Y2). <code>window: auto</code> frames the drawing; <code>linewidth</code> is in the plane's own units.</p>
       <pre>mode: circles
 size: 1200 x 900
 window: auto
@@ -183,7 +183,7 @@ mode: circles
 size: 1200 x 1000
 window: auto
 width: 0.5
-alpha: 0.35
+alpha: 0.12
 k = -20000 .. 20000
 A = 3*k/45000 + sin(17*pi/20*(k/20000)^5)*cos(41*pi*k/20000)^6 + (1/3*cos(41*pi*k/20000)^16 + 1/3*cos(41*pi*k/20000)^80)*cos(pi*k/40000)^12*sin(6*pi*k/20000)
 B = 15/30*(k/20000)^4 - cos(17*pi/20*(k/20000)^5)*(11/10 + 45/20*cos(pi*k/40000)^8*cos(3*pi*k/40000)^6)*cos(41*pi*k/20000)^6 + 12/20*cos(3*pi*k/200000)^10*cos(9*pi*k/200000)^10*cos(18*pi*k/200000)^10
@@ -196,7 +196,7 @@ mode: segments
 size: 1200 x 1000
 window: auto
 width: 0.6
-alpha: 0.55
+alpha: 0.3
 k = 1 .. 2000
 a1 = cos(4*pi*k/2000 + pi/8)
 b1 = cos(8*pi*k/2000 + pi/4)
@@ -214,7 +214,7 @@ mode: segments
 size: 1200 x 1200
 window: auto
 width: 0.4
-alpha: 0.05
+alpha: 0.02
 k = 1 .. 1000000
 t = pi*k/1000000
 E = 7/10 + 4/10*cos(24*t)^2 + 4/10*cos(16*t)^2 - 6/10*cos(4*t)^2
@@ -329,7 +329,7 @@ function parseProgram(text){
     if ((m = /^mode\s*:\s*(\w+)$/i.exec(raw))){ P.mode = m[1].toLowerCase(); if (!["pixel","circles","segments","layers"].includes(P.mode)) throw err(ln, "mode must be pixel, circles, segments or layers"); continue; }
     if ((m = /^size\s*:\s*(\d+)\s*[x×*]\s*(\d+)$/i.exec(raw))){ P.size = [+m[1], +m[2]]; continue; }
     if ((m = /^window\s*:\s*(.+)$/i.exec(raw))){ const v = m[1].trim(); if (v === "auto") P.window = "auto"; else { const a = v.split(/[\s,]+/).map(Number); if (a.length !== 4 || a.some(isNaN)) throw err(ln, "window needs xmin xmax ymin ymax, or auto"); P.window = a; } continue; }
-    if ((m = /^(width|alpha)\s*:\s*([\d.]+)$/i.exec(raw))){ P[m[1].toLowerCase()] = +m[2]; continue; }
+    if ((m = /^(width|alpha|linewidth)\s*:\s*([\d.]+)$/i.exec(raw))){ P[m[1].toLowerCase()] = +m[2]; continue; }
     if ((m = /^color\s*:\s*(#[0-9a-f]{6})$/i.exec(raw))){ P.color = m[1]; continue; }
     if ((m = /^k\s*=\s*(.+?)\s*\.\.\s*(.+)$/.exec(raw))){ P.kRange = [m[1], m[2], ln]; continue; }
     if ((m = /^terms\s*:\s*(.+)$/i.exec(raw))){
@@ -435,7 +435,15 @@ return function(j0, j1, w, h, W, H, data){
 }
 
 function familyFns(P, names){
-  if (!P.kRange) throw err(0, "a family needs a line 'k = first .. last'");
+  if (P.terms){                                                         // one row of the table per circle or segment
+    const sc = {}; P.terms.cols.forEach((c, i) => sc[c] = "_c[" + i + "]");
+    const D = compileDefs(P.defs, sc);
+    for (const nm of names) if (!D.scope[nm]) throw err(0, "this mode needs a line '" + nm + " = ...' in terms of the table's columns");
+    const f = new Function(RT + "return function(_c, o){ " + D.code.join(" ") + " " + names.map((nm, i) => "o[" + i + "] = " + D.scope[nm].js + ";").join(" ") + " };")();
+    const rows = P.terms.rows;
+    return {lo: 0, hi: rows.length - 1, fn: (k, o) => f(rows[k], o)};
+  }
+  if (!P.kRange) throw err(0, "a family needs a line 'k = first .. last', or a 'terms:' table");
   const lo = Function('"use strict";' + RT + "return " + parseExpr(tokenize(P.kRange[0], P.kRange[2]), P.kRange[2], {}))();
   const hi = Function('"use strict";' + RT + "return " + parseExpr(tokenize(P.kRange[1], P.kRange[2]), P.kRange[2], {}))();
   const D = compileDefs(P.defs, {k: "k"});
@@ -446,7 +454,7 @@ function familyFns(P, names){
 function renderFamily(P, my){
   const names = P.mode === "circles" ? ["A", "B", "R"] : ["X1", "Y1", "X2", "Y2"];
   const {lo, hi, fn} = familyFns(P, names);
-  const n = hi - lo + 1; if (n <= 0) throw err(P.kRange[2], "the range of k is empty");
+  const n = hi - lo + 1; if (n <= 0) throw err(P.kRange ? P.kRange[2] : 0, "there is nothing to draw");
   const vals = new Float64Array(n*names.length), o = new Float64Array(names.length);
   for (let k = lo, q = 0; k <= hi; k++, q++){ fn(k, o); for (let c = 0; c < names.length; c++) vals[q*names.length + c] = o[c]; }
   let [x0, x1, y0, y1] = P.window === "auto" ? [Infinity, -Infinity, Infinity, -Infinity] : P.window;
@@ -459,20 +467,22 @@ function renderFamily(P, my){
     if (!isFinite(x0)) throw err(0, "the family produced no finite points");
   }
   const [w, h] = viewSize(P); out.width = w; out.height = h;
-  const pad = 0.05, sx = w*(1 - 2*pad)/(x1 - x0 || 1), sy = h*(1 - 2*pad)/(y1 - y0 || 1), s = Math.min(sx, sy);
+  const pad = P.window === "auto" ? 0.05 : 0, sx = w*(1 - 2*pad)/(x1 - x0 || 1), sy = h*(1 - 2*pad)/(y1 - y0 || 1), s = Math.min(sx, sy);
   const cx = w/2 - s*(x0 + x1)/2, cy = h/2 + s*(y0 + y1)/2;
   const g = out.getContext('2d'); g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h);
-  g.strokeStyle = P.color; g.globalAlpha = P.alpha; g.lineWidth = P.width*(w/1200 + 0.3);
+  g.strokeStyle = P.color; g.globalAlpha = P.alpha; g.lineCap = 'round';
+  g.lineWidth = P.linewidth ? P.linewidth*s : P.width*(w/1200 + 0.3);           // linewidth is in plane units, width in screen pixels
   let q = 0; const t0 = performance.now(), per = P.mode === "circles" ? 2000 : 20000;
   (function chunk(){
     if (my !== token) return;
-    const end = Math.min(n, q + per); g.beginPath();
-    for (; q < end; q++){
-      const b = q*names.length;
+    const end = Math.min(n, q + per);
+    for (; q < end; q++){                    // each curve is its own stroke, so where curves cross the ink adds up
+      const b = q*names.length; g.beginPath();
       if (P.mode === "circles"){ const X = cx + s*vals[b], Y = cy - s*vals[b+1], R = s*Math.abs(vals[b+2]); g.moveTo(X + R, Y); g.arc(X, Y, R, 0, 2*Math.PI); }
       else { g.moveTo(cx + s*vals[b], cy - s*vals[b+1]); g.lineTo(cx + s*vals[b+2], cy - s*vals[b+3]); }
+      g.stroke();
     }
-    g.stroke(); progress(q/n);
+    progress(q/n);
     setStatus(n.toLocaleString() + (P.mode === "circles" ? ' circles' : ' line segments') + ', ' + w + ' x ' + h, ((performance.now() - t0)/1000).toFixed(1) + ' s');
     if (q < n) setTimeout(chunk, 0); else g.globalAlpha = 1;
   })();
