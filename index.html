@@ -1,0 +1,594 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Equation Painter</title>
+<meta name="description" content="Upload a picture and get it back redrawn from soft ellipses, with the full formula that paints every pixel, in the style of Hamid Naderi Yeganeh.">
+<meta property="og:title" content="Equation Painter">
+<meta property="og:description" content="Any picture, one equation.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cellipse cx='12' cy='12' rx='10' ry='5' transform='rotate(-30 12 12)' fill='none' stroke='%230D1015' stroke-width='1.8'/%3E%3Cellipse cx='12' cy='12' rx='10' ry='5' transform='rotate(30 12 12)' fill='none' stroke='%232340EE' stroke-width='1.8'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&family=Geist:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=STIX+Two+Text:ital,wght@0,400;0,600;1,400&display=swap">
+<style>
+:root{
+  --ground:#E6E9ED; --surface:#F6F7F9; --raised:#FFFFFF; --ink:#0D1015; --muted:#58616D; --faint:#8A929D;
+  --line:#CBD1D8; --grid:rgba(13,16,21,.07);
+  --accent:#2340EE; --accent-ink:#FFFFFF; --accent-soft:#DCE2FF;
+  --r:#E0453A; --g:#1F9D63; --b:#2F6BEF;
+  --paper:#FFFFFF; --paper-ink:#111111;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#0B0D11; --surface:#12151B; --raised:#181C23; --ink:#E8EBEF; --muted:#98A1AD; --faint:#667080;
+    --line:#252B35; --grid:rgba(232,235,239,.06);
+    --accent:#8397FF; --accent-ink:#0B0D11; --accent-soft:#1A2140;
+    --r:#FF6B5E; --g:#43C98A; --b:#6E98FF;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0B0D11; --surface:#12151B; --raised:#181C23; --ink:#E8EBEF; --muted:#98A1AD; --faint:#667080;
+  --line:#252B35; --grid:rgba(232,235,239,.06);
+  --accent:#8397FF; --accent-ink:#0B0D11; --accent-soft:#1A2140;
+  --r:#FF6B5E; --g:#43C98A; --b:#6E98FF;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--ground);color:var(--ink);font-family:Geist,system-ui,-apple-system,"Segoe UI",sans-serif;font-size:15px;line-height:1.55;
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:32px 32px}
+.mono{font-family:"JetBrains Mono",ui-monospace,Consolas,monospace}
+.math{font-family:"STIX Two Text",Georgia,"Times New Roman",serif}
+.wrap{max-width:1240px;margin:0 auto;padding-inline:20px;padding-block:20px 64px;display:flex;flex-direction:column;gap:28px}
+
+/* top bar */
+.bar{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:14px}
+.mark{font-family:"Bricolage Grotesque",Geist,sans-serif;font-weight:700;font-size:20px;letter-spacing:-.01em;display:flex;align-items:center;gap:10px}
+.mark svg{width:22px;height:22px}
+.bar small{color:var(--muted);font-size:13px}
+.bar small i{font-family:"STIX Two Text",Georgia,serif;font-size:15px}
+
+/* hero */
+.hero{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:28px;align-items:start}
+@media (max-width:900px){.hero{grid-template-columns:1fr}}
+
+.stage{background:var(--raised);border:1px solid var(--line);border-radius:14px;padding:14px 14px 12px 38px;position:relative}
+.plot{position:relative}
+.plot canvas{display:block;width:100%;height:auto;border-radius:3px;background:var(--line)}
+.axis-y{position:absolute;left:-30px;top:0;bottom:0;display:flex;flex-direction:column;justify-content:space-between;font-size:10.5px;color:var(--faint)}
+.axis-x{display:flex;justify-content:space-between;font-size:10.5px;color:var(--faint);margin-top:4px}
+.axis-y span,.axis-x span{font-family:"JetBrains Mono",monospace}
+.pip{position:absolute;right:10px;bottom:10px;width:24%;border:2px solid var(--raised);border-radius:6px;box-shadow:0 4px 18px rgba(0,0,0,.25);overflow:hidden}
+.pip canvas{border-radius:0}
+.pip b{position:absolute;left:6px;top:4px;font-size:10px;font-weight:600;letter-spacing:.06em;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.6)}
+.ticker{margin-top:12px;display:flex;gap:10px;align-items:baseline;font-size:12.5px;min-height:1.6em;overflow:hidden;white-space:nowrap}
+.ticker .tag{flex:none;font-size:10.5px;font-weight:600;letter-spacing:.08em;color:var(--accent)}
+.ticker .line{overflow:hidden;text-overflow:ellipsis;color:var(--ink)}
+.ticker .line i{font-family:"STIX Two Text",Georgia,serif;font-size:14px}
+
+.side{display:flex;flex-direction:column;gap:22px}
+.side h1{font-family:"Bricolage Grotesque",Geist,sans-serif;font-weight:750;font-variation-settings:"wdth" 85;font-size:clamp(36px,5vw,58px);line-height:.98;letter-spacing:-.025em;margin:4px 0 0;text-wrap:balance}
+.side h1 em{font-style:normal;color:var(--accent)}
+.side .lede{color:var(--muted);margin:0;max-width:46ch}
+.side .lede .math{color:var(--ink);font-style:italic;font-size:1.08em}
+
+.step{display:flex;flex-direction:column;gap:10px}
+.step-h{display:flex;align-items:baseline;gap:10px;font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.step-h .mono{color:var(--accent);font-weight:500}
+
+.drop{display:flex;align-items:center;gap:14px;background:var(--raised);border:1px dashed var(--line);border-radius:12px;padding:12px;cursor:pointer;transition:border-color .15s,background .15s;position:relative}
+.drop:hover,.drop.over{border-color:var(--accent);background:var(--accent-soft)}
+.drop:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+.drop input{position:absolute;opacity:0;width:1px;height:1px}
+.drop img{width:54px;height:54px;border-radius:8px;object-fit:cover;background:var(--line);flex:none}
+.drop strong{display:block;font-weight:600;overflow-wrap:anywhere}
+.drop span{color:var(--muted);font-size:13px}
+
+.levels{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));background:var(--raised);border:1px solid var(--line);border-radius:12px;padding:4px;gap:4px}
+@media (max-width:460px){.levels{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.lv{position:relative}
+.lv input{position:absolute;opacity:0;inset:0;margin:0;cursor:pointer}
+.lv label{display:flex;flex-direction:column;gap:1px;height:100%;border-radius:9px;padding:9px 10px;cursor:pointer;transition:background .15s,color .15s}
+.lv label b{font-weight:600;font-size:14px}
+.lv label small{font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--muted)}
+.lv .dots{display:flex;gap:3px;margin-bottom:5px}
+.lv .dots i{width:5px;height:5px;border-radius:50%;background:var(--line)}
+.lv .dots i.on{background:var(--accent)}
+.lv input:checked + label{background:var(--ink);color:var(--ground)}
+.lv input:checked + label small{color:var(--faint)}
+.lv input:checked + label .dots i.on{background:var(--accent)}
+.lv input:focus-visible + label{outline:2px solid var(--accent);outline-offset:1px}
+.lv input:disabled + label{cursor:default;opacity:.55}
+
+.custom{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 20px}
+.custom[hidden]{display:none!important}
+@media (max-width:460px){.custom{grid-template-columns:1fr}}
+.slider{display:flex;flex-direction:column;gap:4px}
+.slider .top{display:flex;justify-content:space-between;font-size:13px;color:var(--muted)}
+.slider output{font-family:"JetBrains Mono",monospace;color:var(--ink)}
+input[type=range]{width:100%;accent-color:var(--accent)}
+
+.runrow{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+button{font:inherit;cursor:pointer;border-radius:10px;padding:11px 18px;border:1px solid var(--line);background:var(--raised);color:var(--ink)}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600;padding:13px 22px;display:inline-flex;gap:10px;align-items:center}
+button.primary.stop{background:var(--ink);border-color:var(--ink);color:var(--ground)}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button:disabled{opacity:.5;cursor:default}
+.est{font-size:13px;color:var(--muted)}
+.est b{color:var(--ink);font-weight:500}
+
+.meter{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--line);border-radius:12px;background:var(--raised);overflow:hidden}
+.meter div{padding:10px 12px;border-inline-start:1px solid var(--line);display:flex;flex-direction:column;gap:2px;min-width:0}
+.meter div:first-child{border-inline-start:0}
+.meter span{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.meter b{font-family:"JetBrains Mono",monospace;font-weight:500;font-size:15px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.track{grid-column:1/-1;height:3px;background:var(--line);padding:0!important;border:0!important}
+.fill{height:100%;width:0;background:var(--accent);transition:width .2s}
+@media (max-width:460px){.meter{grid-template-columns:repeat(2,minmax(0,1fr))}.meter div:nth-child(3){border-inline-start:0}.meter div:nth-child(n+3){border-top:1px solid var(--line)}}
+
+/* formula section */
+.sec-h{display:flex;justify-content:space-between;align-items:end;gap:16px;flex-wrap:wrap}
+.sec-h h2{font-family:"Bricolage Grotesque",Geist,sans-serif;font-weight:700;font-variation-settings:"wdth" 90;font-size:30px;letter-spacing:-.02em;margin:0}
+.sec-h p{margin:4px 0 0;color:var(--muted);max-width:60ch}
+.tools{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.tools .note{font-size:12.5px;color:var(--muted)}
+
+.sheet{background:var(--paper);color:var(--paper-ink);border-radius:6px;box-shadow:0 1px 2px rgba(0,0,0,.08),0 18px 50px -20px rgba(0,0,0,.25);padding:30px clamp(16px,4.5vw,56px) 40px;font-family:"STIX Two Text",Georgia,"Times New Roman",serif;font-size:17px;line-height:1.55;max-width:1000px;width:100%;margin:0 auto}
+.sheet img{display:block;width:100%;height:auto}
+.sheet .cap{text-align:center;font-weight:700;margin:14px 0 12px;font-family:Arial,Helvetica,sans-serif;font-size:16px}
+.sheet p{margin:10px 0}
+.eq{overflow-x:auto;overflow-y:hidden;margin:10px 0;padding:2px 0}
+.eq mjx-container{margin:0!important}
+.eq.raw{white-space:pre-wrap;font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#444}
+.params{columns:2 330px;column-gap:40px;font-size:15px;margin-top:6px}
+.params div{break-inside:avoid;white-space:nowrap;overflow-x:auto;font-variant-numeric:tabular-nums}
+textarea#latexOut{width:100%;min-height:150px;font-family:"JetBrains Mono",ui-monospace,monospace;font-size:12px;background:var(--raised);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:12px}
+
+/* how it works */
+.how{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+@media (max-width:820px){.how{grid-template-columns:1fr}}
+.how article{background:var(--raised);padding:20px 22px;display:flex;flex-direction:column;gap:8px}
+.how h3{margin:0;font-family:"Bricolage Grotesque",Geist,sans-serif;font-weight:650;font-size:19px;letter-spacing:-.01em}
+.how .snip{font-family:"STIX Two Text",Georgia,serif;font-size:18px;color:var(--accent);min-height:1.6em}
+.how p{margin:0;color:var(--muted);font-size:14px}
+.chips{display:flex;gap:6px}
+.chip{font-family:"JetBrains Mono",monospace;font-size:11px;padding:2px 7px;border-radius:99px;color:#fff}
+.honest{border-inline-start:3px solid var(--accent);padding:4px 0 4px 16px;color:var(--muted);max-width:80ch;font-size:14px;margin:0}
+.honest b{color:var(--ink)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+html{-webkit-text-size-adjust:100%}body{margin:0}img{max-width:100%}[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="bar">
+    <div class="mark">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="12" rx="10" ry="5" transform="rotate(-30 12 12)" fill="none" stroke="currentColor" stroke-width="1.6"/><ellipse cx="12" cy="12" rx="10" ry="5" transform="rotate(30 12 12)" fill="none" stroke="var(--accent)" stroke-width="1.6"/></svg>
+      Equation Painter
+    </div>
+    <small>A study in the method of Hamid Naderi Yeganeh, built on <i>e<sup>−e<sup>z</sup></sup></i></small>
+  </div>
+
+  <section class="hero">
+    <div class="stage">
+      <div class="plot">
+        <canvas id="cvLive" width="320" height="213" aria-label="The picture being drawn by the equation"></canvas>
+        <div class="axis-y" id="axisY"><span>+.67</span><span>0</span><span>−.67</span></div>
+        <div class="pip"><b>SOURCE</b><canvas id="cvTarget" width="320" height="213" aria-label="Source image"></canvas></div>
+      </div>
+      <div class="axis-x"><span>x = −1</span><span>0</span><span>+1</span></div>
+      <div class="ticker mono" aria-live="off"><span class="tag">LATEST TERM</span><span class="line" id="tick">waiting for the first ellipse</span></div>
+    </div>
+
+    <div class="side">
+      <div>
+        <h1>Any picture, <em>one equation.</em></h1>
+      </div>
+      <p class="lede">Drop in an image. It comes back redrawn from soft ellipses, with the full formula that paints every pixel written underneath, the way Yeganeh writes his: one mask <span class="math">e<sup>−e<sup>z</sup></sup></span>, and a colour channel <span class="math">v</span>.</p>
+
+      <div class="step">
+        <div class="step-h"><span class="mono">01</span>Picture</div>
+        <label class="drop" id="drop">
+          <input type="file" id="file" accept="image/*">
+          <img id="thumb" alt="">
+          <div><strong id="fileName">Sample: sunset and sailboat</strong><span>Click to choose, or drop an image here. One subject on a plain background works best.</span></div>
+        </label>
+      </div>
+
+      <div class="step">
+        <div class="step-h"><span class="mono">02</span>Detail and time</div>
+        <div class="levels" id="levels" role="radiogroup" aria-label="Detail level"></div>
+        <div class="custom" id="custom" hidden>
+          <div class="slider"><div class="top"><label for="nTerms">Terms</label><output id="nTermsOut">120</output></div><input type="range" id="nTerms" min="8" max="600" step="1" value="120"></div>
+          <div class="slider"><div class="top"><label for="effort">Search effort</label><output id="effortOut">3 / 5</output></div><input type="range" id="effort" min="1" max="5" step="1" value="3"></div>
+        </div>
+      </div>
+
+      <div class="runrow">
+        <button class="primary" id="run">Paint the equation</button>
+        <span class="est" id="est"></span>
+      </div>
+
+      <div class="meter" aria-label="Progress">
+        <div><span>Terms</span><b id="sTerms">0</b></div>
+        <div><span>Elapsed</span><b id="sTime">0s</b></div>
+        <div><span>Left</span><b id="sEta">…</b></div>
+        <div><span>Error</span><b id="sErr">…</b></div>
+        <div class="track"><div class="fill" id="fill"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="result" hidden style="display:flex;flex-direction:column;gap:18px">
+    <div class="sec-h">
+      <div><h2>The equation</h2><p>The picture below is not the preview above. It is computed again, at full size, from the rounded numbers printed under it.</p></div>
+      <div class="tools"><button id="copyTex">Copy as LaTeX</button><span class="note">Right-click the picture to save it.</span></div>
+    </div>
+    <textarea id="latexOut" readonly hidden aria-label="LaTeX source"></textarea>
+    <article class="sheet" id="sheet">
+      <img id="finalImg" alt="Picture computed from the equation">
+      <div class="cap" id="cap"></div>
+      <div id="formula"></div>
+    </article>
+  </section>
+
+  <section style="display:flex;flex-direction:column;gap:16px">
+    <div class="sec-h"><div><h2>How it paints</h2></div></div>
+    <div class="how">
+      <article>
+        <h3>A soft mask</h3>
+        <div class="snip">e<sup>−e<sup>z</sup></sup></div>
+        <p>Close to 1 where z is negative, close to 0 where it is positive. Put an ellipse inside z and you get a blurred stencil. Every term in the formula is one of these.</p>
+      </article>
+      <article>
+        <h3>Three colours from one line</h3>
+        <div class="snip">C<sub>j</sub>(v) = (a + bv + cv²)/d</div>
+        <div class="chips"><span class="chip" style="background:var(--r)">v = 0</span><span class="chip" style="background:var(--g)">v = 1</span><span class="chip" style="background:var(--b)">v = 2</span></div>
+        <p>A quadratic in v passes through the red, green and blue value of a term, so one expression gives all three channels.</p>
+      </article>
+      <article>
+        <h3>Search, then round</h3>
+        <div class="snip">θ = 1.57, p = 0.21</div>
+        <p>Each new term tries random spots, favouring the ones furthest from your picture, then nudges the best. Numbers are rounded to two decimals as it goes, so the formula printed is exactly the one that drew.</p>
+      </article>
+    </div>
+    <p class="honest"><b>What it does and does not do.</b> The formula stores no pixels: each term is eight numbers, so a 120 term picture carries about a thousand constants against hundreds of thousands of pixels. The search does read your image to measure the difference, as any automatic fit must. Yeganeh designs each term by hand and each one means something, an eye or a fin; here each term is a patch the search chose.</p>
+  </section>
+</div>
+
+<script>
+window.MathJax = { tex:{}, svg:{ fontCache:'global' }, startup:{ typeset:false } };
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-svg.js" async></script>
+<script>
+(function(){
+"use strict";
+const $ = id => document.getElementById(id);
+
+/* ---------------- levels ---------------- */
+const LEVELS = [
+  {id:'glance', name:'Glance', N:24,  L:96,  R:30, H:40},
+  {id:'sketch', name:'Sketch', N:70,  L:128, R:45, H:70},
+  {id:'study',  name:'Study',  N:180, L:160, R:60, H:110},
+  {id:'plate',  name:'Plate',  N:420, L:200, R:80, H:150},
+  {id:'custom', name:'Custom', custom:true}
+];
+let RATE = 1/2.5e7;   // seconds per unit of work; replaced by this device's measured speed after the first run
+function secondsFor(lv){ return lv.N*(lv.R + lv.H)*(lv.L*lv.L)*RATE; }
+function timeLabel(s){ if (s < 6) return '< 5 s'; if (s < 55) return '~' + Math.round(s/5)*5 + ' s'; const m = s/60; return '~' + (m < 10 ? (Math.round(m*2)/2) : Math.round(m)) + ' min'; }
+const lvBox = $('levels');
+LEVELS.forEach((lv, k) => {
+  const d = document.createElement('div'); d.className = 'lv';
+  const dots = '<div class="dots">' + [0,1,2,3].map(i => '<i class="' + (!lv.custom && i <= k ? 'on' : '') + '"></i>').join('') + '</div>';
+  const sub = lv.custom ? '<small>your pick</small><small>&nbsp;</small>' : '<small>' + lv.N + ' terms</small><small class="t">' + timeLabel(secondsFor(lv)) + '</small>';
+  d.dataset.k = k;
+  d.innerHTML = '<input type="radio" name="level" id="lv_' + lv.id + '" value="' + lv.id + '"' + (k === 0 ? ' checked' : '') + '><label for="lv_' + lv.id + '">' + dots + '<b>' + lv.name + '</b>' + sub + '</label>';
+  lvBox.appendChild(d);
+});
+function currentLevel(){
+  const id = document.querySelector('input[name=level]:checked').value, lv = LEVELS.find(l => l.id === id);
+  if (!lv.custom) return lv;
+  const e = +$('effort').value;
+  return {id:'custom', name:'Custom', N: +$('nTerms').value, L: 80 + 24*e, R: 15 + 15*e, H: 25 + 30*e};
+}
+function refreshLevelUI(){
+  $('custom').hidden = document.querySelector('input[name=level]:checked').value !== 'custom';
+  $('nTermsOut').textContent = $('nTerms').value; $('effortOut').textContent = $('effort').value + ' / 5';
+  document.querySelectorAll('.lv small.t').forEach(el => { el.textContent = timeLabel(secondsFor(LEVELS[+el.closest('.lv').dataset.k])); });
+  const lv = currentLevel();
+  $('est').innerHTML = '<b>' + lv.N + ' terms</b>, about ' + timeLabel(secondsFor(lv)).replace('~', '') + ' on this device';
+}
+lvBox.addEventListener('change', refreshLevelUI);
+$('nTerms').addEventListener('input', refreshLevelUI);
+$('effort').addEventListener('input', refreshLevelUI);
+
+/* ---------------- source image ---------------- */
+let srcImg = null, srcName = 'Sunset';
+function sampleImage(){
+  const c = document.createElement('canvas'); c.width = 480; c.height = 320; const g = c.getContext('2d');
+  let gr = g.createLinearGradient(0,0,0,200); gr.addColorStop(0,'#2b2f6b'); gr.addColorStop(.55,'#d8667a'); gr.addColorStop(1,'#f6b26b');
+  g.fillStyle = gr; g.fillRect(0,0,480,200);
+  g.fillStyle = '#ffe3a1'; g.beginPath(); g.arc(300,168,42,0,Math.PI*2); g.fill();
+  gr = g.createLinearGradient(0,196,0,320); gr.addColorStop(0,'#7a4d78'); gr.addColorStop(1,'#1d2449');
+  g.fillStyle = gr; g.fillRect(0,196,480,124);
+  g.fillStyle = 'rgba(255,214,150,.55)'; for (let i=0;i<7;i++){ g.fillRect(262 - i*6, 206 + i*13, 76 + i*12, 4); }
+  g.fillStyle = '#16152a'; g.beginPath(); g.moveTo(120,250); g.lineTo(215,250); g.lineTo(200,268); g.lineTo(134,268); g.fill();
+  g.beginPath(); g.moveTo(165,246); g.lineTo(165,150); g.lineTo(212,238); g.fill();
+  g.beginPath(); g.moveTo(160,246); g.lineTo(160,170); g.lineTo(128,240); g.fill();
+  const im = new Image(); im.src = c.toDataURL(); return im;
+}
+function setSource(img, name, label){ srcImg = img; srcName = name; $('thumb').src = img.src; $('fileName').textContent = label; }
+$('file').addEventListener('change', e => { const f = e.target.files[0]; if (f) loadFile(f); });
+const drop = $('drop');
+['dragenter','dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave','drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f && f.type.startsWith('image/')) loadFile(f); });
+function loadFile(f){
+  const r = new FileReader();
+  r.onload = () => { const im = new Image(); im.onload = () => {
+    const nm = f.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim() || 'Picture';
+    setSource(im, nm.charAt(0).toUpperCase() + nm.slice(1), f.name); previewSource(); }; im.src = r.result; };
+  r.readAsDataURL(f);
+}
+
+/* ---------------- engine ---------------- */
+const K = 8, PI = Math.PI;
+const q2 = v => Math.round(v*100)/100;
+let job = null;
+
+function prepare(img, L){
+  const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height, s = L/Math.max(iw, ih);
+  let w = Math.max(8, Math.round(iw*s)), h = Math.max(8, Math.round(ih*s)); w += w % 2; h += h % 2;
+  const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d', {willReadFrequently:true});
+  g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high'; g.drawImage(img, 0, 0, w, h);
+  const d = g.getImageData(0, 0, w, h).data, T = new Float32Array(w*h*3);
+  for (let i = 0, k = 0; i < w*h; i++){ T[k++] = d[i*4]/255; T[k++] = d[i*4+1]/255; T[k++] = d[i*4+2]/255; }
+  return {w, h, T};
+}
+function coords(w, h){
+  const half = Math.max(w, h)/2, X = new Float32Array(w), Y = new Float32Array(h);
+  for (let i = 0; i < w; i++) X[i] = (i + 1 - w/2)/half;
+  for (let j = 0; j < h; j++) Y[j] = (h/2 - (j + 1))/half;
+  return {half, X, Y};
+}
+function fitBackground(J){
+  const {w, h, T, X, Y} = J; const S = [0,0,0,0,0,0], R = [[0,0,0],[0,0,0],[0,0,0]];
+  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++){
+    const x = X[i], y = Y[j], p = (j*w + i)*3;
+    S[0]++; S[1]+=x; S[2]+=y; S[3]+=x*x; S[4]+=x*y; S[5]+=y*y;
+    for (let c = 0; c < 3; c++){ const t = T[p+c]; R[c][0]+=t; R[c][1]+=t*x; R[c][2]+=t*y; }
+  }
+  const A = [[S[0],S[1],S[2]],[S[1],S[3],S[4]],[S[2],S[4],S[5]]];
+  const det = m => m[0][0]*(m[1][1]*m[2][2]-m[1][2]*m[2][1]) - m[0][1]*(m[1][0]*m[2][2]-m[1][2]*m[2][0]) + m[0][2]*(m[1][0]*m[2][1]-m[1][1]*m[2][0]);
+  const D = det(A);
+  return R.map(b => [0,1,2].map(k => Math.round(80*det(A.map((row, r) => row.map((v, cc) => cc === k ? b[r] : v)))/D)));
+}
+const bgValue = (bg, c, x, y) => (bg[c][0] + bg[c][1]*x + bg[c][2]*y)/80;
+
+function bbox(J, sh){
+  const r = 1.28*Math.max(sh.p, sh.q), {half, w, h} = J;
+  return [Math.max(0, Math.floor((sh.a - r)*half + w/2 - 1)), Math.min(w - 1, Math.ceil((sh.a + r)*half + w/2 - 1)),
+          Math.max(0, Math.floor(h/2 - 1 - (sh.b + r)*half)), Math.min(h - 1, Math.ceil(h/2 - 1 - (sh.b - r)*half))];
+}
+function maskAt(sh, x, y, ct, st){
+  const dx = x - sh.a, dy = y - sh.b, u = dx*ct + dy*st, v = dy*ct - dx*st;
+  const z = K*(u*u/(sh.p*sh.p) + v*v/(sh.q*sh.q) - 1);
+  if (z > 5) return 0; if (z < -40) return 1;
+  return Math.exp(-Math.exp(z));
+}
+function score(J, sh){
+  const [i0, i1, j0, j1] = bbox(J, sh); if (i1 < i0 || j1 < j0) return null;
+  const {w, C, T, X, Y, buf} = J, ct = Math.cos(sh.t), st = Math.sin(sh.t);
+  let sMM = 0, n0 = 0, n1 = 0, n2 = 0, k = 0;
+  for (let j = j0; j <= j1; j++){ const y = Y[j];
+    for (let i = i0; i <= i1; i++, k++){
+      const M = maskAt(sh, X[i], y, ct, st); buf[k] = M; if (!M) continue;
+      const p = (j*w + i)*3; sMM += M*M;
+      n0 += M*(T[p] - C[p]*(1 - M)); n1 += M*(T[p+1] - C[p+1]*(1 - M)); n2 += M*(T[p+2] - C[p+2]*(1 - M));
+    }
+  }
+  if (sMM < 1e-6) return null;
+  const col = [n0, n1, n2].map(n => Math.round(40*Math.min(1, Math.max(0, n/sMM)))/40);
+  let delta = 0; k = 0;
+  for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++, k++){
+    const M = buf[k]; if (!M) continue; const p = (j*w + i)*3;
+    for (let c = 0; c < 3; c++){ const cur = C[p+c], tg = T[p+c], nv = cur + M*(col[c] - cur); delta += (nv - tg)*(nv - tg) - (cur - tg)*(cur - tg); }
+  }
+  return {delta, col};
+}
+function apply(J, sh){
+  const [i0, i1, j0, j1] = bbox(J, sh), {w, C, T, X, Y, err} = J, ct = Math.cos(sh.t), st = Math.sin(sh.t);
+  for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++){
+    const M = maskAt(sh, X[i], Y[j], ct, st); if (!M) continue; const p = (j*w + i)*3; let e = 0;
+    for (let c = 0; c < 3; c++){ C[p+c] += M*(sh.col[c] - C[p+c]); const d = C[p+c] - T[p+c]; e += d*d; }
+    J.sumErr += e - err[j*w + i]; err[j*w + i] = e;
+  }
+}
+function quant(sh){
+  sh.a = q2(sh.a); sh.b = q2(sh.b); sh.p = Math.max(0.01, Math.min(1.5, q2(sh.p))); sh.q = Math.max(0.01, Math.min(1.5, q2(sh.q)));
+  let t = sh.t % PI; if (t < 0) t += PI; sh.t = Math.min(3.14, q2(t)); return sh;
+}
+const gauss = () => { let u = 0, v = 0; while (!u) u = Math.random(); while (!v) v = Math.random(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*PI*v); };
+function randShape(J){
+  const {w, h, err, X, Y} = J; let best = -1, bi = 0;
+  for (let t = 0; t < 5; t++){ const idx = (Math.random()*w*h) | 0; if (err[idx] > best){ best = err[idx]; bi = idx; } }
+  const smax = 0.04 + 0.5*Math.max(0.08, 1 - J.shapes.length/J.N);
+  return quant({a: X[bi % w], b: Y[(bi/w) | 0], p: 0.015 + Math.random()*smax, q: 0.015 + Math.random()*smax, t: Math.random()*PI});
+}
+function mutate(sh){
+  const m = {a: sh.a, b: sh.b, p: sh.p, q: sh.q, t: sh.t}, g = gauss();
+  switch ((Math.random()*5) | 0){
+    case 0: m.a += 0.04*g; break; case 1: m.b += 0.04*g; break;
+    case 2: m.p *= Math.exp(0.25*g); break; case 3: m.q *= Math.exp(0.25*g); break; default: m.t += 0.35*g;
+  }
+  return quant(m);
+}
+function step(J){
+  let best = null;
+  for (let r = 0; r < J.R; r++){ const sh = randShape(J), s = score(J, sh); if (s && (!best || s.delta < best.s.delta)) best = {sh, s}; }
+  if (!best) return false;
+  for (let k = 0; k < J.H; k++){ const m = mutate(best.sh), s = score(J, m); if (s && s.delta < best.s.delta) best = {sh: m, s}; }
+  if (best.s.delta >= 0) return false;
+  best.sh.col = best.s.col; apply(J, best.sh); J.shapes.push(best.sh); return true;
+}
+
+/* ---------------- drawing ---------------- */
+function F(t){ return Math.floor(255*Math.exp(-Math.exp(-1000*t))*Math.pow(Math.abs(t), Math.exp(-Math.exp(1000*(t - 1))))); }
+function drawFloat(cv, w, h, C){
+  cv.width = w; cv.height = h; const g = cv.getContext('2d'), im = g.createImageData(w, h);
+  for (let i = 0; i < w*h; i++){ im.data[i*4] = F(C[i*3]); im.data[i*4+1] = F(C[i*3+1]); im.data[i*4+2] = F(C[i*3+2]); im.data[i*4+3] = 255; }
+  g.putImageData(im, 0, 0);
+}
+function setAxes(w, h){
+  const yMax = (h/Math.max(w, h)).toFixed(2).replace(/^0/, '').replace('1.00', '1'), xMax = (w/Math.max(w, h)).toFixed(2).replace(/^0/, '').replace('1.00', '1');
+  $('axisY').innerHTML = '<span>+' + yMax + '</span><span>0</span><span>−' + yMax + '</span>';
+  document.querySelector('.axis-x').innerHTML = '<span>x = −' + xMax + '</span><span>0</span><span>+' + xMax + '</span>';
+}
+function previewSource(){
+  if (job && job.running) return;
+  const P = prepare(srcImg, 160); drawFloat($('cvTarget'), P.w, P.h, P.T);
+}
+const fmtTime = s => s < 60 ? Math.round(s) + 's' : Math.floor(s/60) + 'm ' + String(Math.round(s % 60)).padStart(2, '0') + 's';
+const num = (v, tex) => { const s = String(Number(v.toFixed(2))); return tex ? s : s.replace('-', '−'); };
+function termHTML(sh, j){
+  return '<i>M</i><sub>' + j + '</sub> = <i>E</i>(<i>x</i>, <i>y</i>; ' + [sh.a, sh.b, sh.p, sh.q, sh.t].map(v => num(v, false)).join(', ') + ')';
+}
+
+/* ---------------- run ---------------- */
+const locks = () => document.querySelectorAll('input[name=level], #nTerms, #effort, #file');
+function start(){
+  if (!srcImg || !srcImg.complete) return;
+  if (job && job.running){ job.stop = true; return; }
+  const lv = currentLevel(), P = prepare(srcImg, lv.L), cs = coords(P.w, P.h);
+  const J = Object.assign({}, P, cs, {N: lv.N, R: lv.R, H: lv.H, shapes: [], running: true, stop: false, stall: 0,
+    C: new Float32Array(P.w*P.h*3), err: new Float32Array(P.w*P.h), buf: new Float32Array(P.w*P.h), sumErr: 0, t0: performance.now(), lastDraw: 0});
+  J.bg = fitBackground(J);
+  for (let j = 0; j < J.h; j++) for (let i = 0; i < J.w; i++){
+    const p = (j*J.w + i)*3; let e = 0;
+    for (let c = 0; c < 3; c++){ J.C[p+c] = bgValue(J.bg, c, J.X[i], J.Y[j]); const d = J.C[p+c] - J.T[p+c]; e += d*d; }
+    J.err[j*J.w + i] = e; J.sumErr += e;
+  }
+  job = J;
+  setAxes(J.w, J.h); drawFloat($('cvTarget'), J.w, J.h, J.T); drawFloat($('cvLive'), J.w, J.h, J.C);
+  $('run').textContent = 'Stop and write the formula'; $('run').classList.add('stop');
+  $('tick').textContent = 'B_v(x, y): a linear gradient';
+  locks().forEach(el => el.disabled = true);
+  loop();
+}
+function loop(){
+  const J = job, sliceEnd = performance.now() + 28;
+  while (J.shapes.length < J.N && !J.stop && performance.now() < sliceEnd){
+    if (!step(J)){ if (++J.stall > 40) break; } else J.stall = 0;
+  }
+  const n = J.shapes.length, el = (performance.now() - J.t0)/1000;
+  $('fill').style.width = (100*n/J.N).toFixed(1) + '%';
+  $('sTerms').textContent = n + ' / ' + J.N; $('sTime').textContent = fmtTime(el);
+  $('sEta').textContent = n > 2 ? fmtTime(el/n*(J.N - n)*1.15) : '…';
+  $('sErr').textContent = (255*Math.sqrt(J.sumErr/(J.w*J.h*3))).toFixed(1);
+  if (performance.now() - J.lastDraw > 110){
+    drawFloat($('cvLive'), J.w, J.h, J.C); J.lastDraw = performance.now();
+    if (n) $('tick').innerHTML = termHTML(J.shapes[n - 1], n);
+  }
+  if (n < J.N && !J.stop && J.stall <= 40) setTimeout(loop, 0); else finish();
+}
+function finish(){
+  const J = job; J.running = false;
+  const n = J.shapes.length, el = (performance.now() - J.t0)/1000;
+  if (n >= 10 && el > 0.05) RATE = el/(n*(J.R + J.H)*Math.max(J.w, J.h)**2); drawFloat($('cvLive'), J.w, J.h, J.C);
+  if (J.shapes.length) $('tick').innerHTML = termHTML(J.shapes[J.shapes.length - 1], J.shapes.length);
+  $('sEta').textContent = 'done'; $('fill').style.width = '100%';
+  $('run').disabled = true; $('run').classList.remove('stop'); $('run').textContent = 'Evaluating the formula…';
+  setTimeout(() => renderFinal(J), 20);
+}
+
+/* ---------------- final render from the written formula ---------------- */
+function renderFinal(J){
+  const s = 1000/Math.max(J.w, J.h), W = Math.round(J.w*s/2)*2, Hh = Math.round(J.h*s/2)*2, cs = coords(W, Hh);
+  const O = {w: W, h: Hh, half: cs.half, X: cs.X, Y: cs.Y, C: new Float32Array(W*Hh*3)};
+  for (let j = 0; j < Hh; j++) for (let i = 0; i < W; i++){ const p = (j*W + i)*3; for (let c = 0; c < 3; c++) O.C[p+c] = bgValue(J.bg, c, O.X[i], O.Y[j]); }
+  let k = 0;
+  (function chunk(){
+    const end = Math.min(J.shapes.length, k + 25);
+    for (; k < end; k++){
+      const sh = J.shapes[k], [i0, i1, j0, j1] = bbox(O, sh), ct = Math.cos(sh.t), st = Math.sin(sh.t);
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++){
+        const M = maskAt(sh, O.X[i], O.Y[j], ct, st); if (!M) continue; const p = (j*W + i)*3;
+        for (let c = 0; c < 3; c++) O.C[p+c] += M*(sh.col[c] - O.C[p+c]);
+      }
+    }
+    if (k < J.shapes.length) return setTimeout(chunk, 0);
+    const cv = document.createElement('canvas'); drawFloat(cv, W, Hh, O.C);
+    $('finalImg').src = cv.toDataURL('image/png');
+    writeFormula(J, W, Hh);
+    $('run').disabled = false; $('run').textContent = 'Paint the equation';
+    locks().forEach(el => el.disabled = false); refreshLevelUI();
+  })();
+}
+
+/* ---------------- formula text ---------------- */
+const gcd = (a, b) => { a = Math.abs(a); b = Math.abs(b); while (b){ [a, b] = [b, a % b]; } return a; };
+function quad(R, G, B, den){
+  const P = [2*R, -3*R + 4*G - B, R - 2*G + B], D = 2*den, g = [P[0], P[1], P[2], D].reduce((a, b) => gcd(a, b)) || 1;
+  return {P: P.map(x => x/g), D: D/g};
+}
+function polyText(P, tex){
+  const mono = ['', 'v', tex ? 'v^2' : 'v²']; let out = '';
+  P.forEach((c, k) => {
+    if (!c) return; const a = Math.abs(c), coef = (k > 0 && a === 1) ? '' : String(a);
+    if (!out) out = (c < 0 ? (tex ? '-' : '−') : '') + coef + mono[k];
+    else out += (c < 0 ? (tex ? ' - ' : ' − ') : ' + ') + coef + mono[k];
+  });
+  return out || '0';
+}
+const fracTeX = q => q.D === 1 ? '(' + polyText(q.P, true) + ')' : '\\frac{' + polyText(q.P, true) + '}{' + q.D + '}';
+const fracHTML = q => q.D === 1 ? '(' + polyText(q.P, false) + ')' : '(' + polyText(q.P, false) + ')/' + q.D;
+
+function writeFormula(J, W, Hh){
+  const N = J.shapes.length, half = Math.max(W, Hh)/2;
+  const bgq = [0,1,2].map(k => quad(J.bg[0][k], J.bg[1][k], J.bg[2][k], 80));
+  const eqs = [
+    'F(t) = \\left\\lfloor 255\\, e^{-e^{-1000t}}\\, |t|^{e^{-e^{1000(t-1)}}} \\right\\rfloor, \\qquad x = \\frac{m - ' + W/2 + '}{' + half + '}, \\quad y = \\frac{' + Hh/2 + ' - n}{' + half + '},',
+    'H_v(x,y) = B_v(x,y)\\prod_{j=1}^{' + N + '}\\bigl(1 - M_j(x,y)\\bigr) + \\sum_{j=1}^{' + N + '} C_j(v)\\, M_j(x,y) \\prod_{i=j+1}^{' + N + '}\\bigl(1 - M_i(x,y)\\bigr),',
+    'E(x,y;a,b,p,q,\\theta) = e^{-e^{' + K + '\\left(\\frac{\\left((x-a)\\cos\\theta + (y-b)\\sin\\theta\\right)^2}{p^2} + \\frac{\\left((y-b)\\cos\\theta - (x-a)\\sin\\theta\\right)^2}{q^2} - 1\\right)}},',
+    'B_v(x,y) = ' + fracTeX(bgq[0]) + ' + ' + fracTeX(bgq[1]) + 'x + ' + fracTeX(bgq[2]) + 'y,'
+  ];
+  const lines = J.shapes.map((sh, j) => ({sh, j: j + 1, q: quad(Math.round(sh.col[0]*40), Math.round(sh.col[1]*40), Math.round(sh.col[2]*40), 40)}));
+  const title = srcName + ' in ' + N + ' Ellipses';
+  $('cap').textContent = title;
+  const intro = 'This image shows ' + N + ' soft ellipses laid over a linear gradient. For \\(m = 1, 2, 3, \\ldots, ' + W + '\\) and \\(n = 1, 2, 3, \\ldots, ' + Hh + '\\), the color of the pixel of the row \\(n\\) and the column \\(m\\) is \\(\\mathrm{rgb}\\bigl(F(H_0(x,y)),\\ F(H_1(x,y)),\\ F(H_2(x,y))\\bigr)\\), where';
+  const f = $('formula');
+  f.innerHTML = '<p>' + intro + '</p>' + eqs.map(e => '<div class="eq">\\[' + e + '\\]</div>').join('') +
+    '<p>and for \\(j = 1, 2, \\ldots, ' + N + '\\), \\(M_j(x,y) = E(x, y; a_j, b_j, p_j, q_j, \\theta_j)\\), where</p>' +
+    '<div class="params">' + lines.map(L => '<div>' + termHTML(L.sh, L.j) + ', &nbsp;<i>C</i><sub>' + L.j + '</sub>(<i>v</i>) = ' + fracHTML(L.q) + '</div>').join('') + '</div>';
+  $('latexOut').value = ['% ' + title, '\\mathrm{rgb}\\bigl(F(H_0(x,y)), F(H_1(x,y)), F(H_2(x,y))\\bigr),\\ m=1,\\ldots,' + W + ',\\ n=1,\\ldots,' + Hh].concat(eqs)
+    .concat(lines.map(L => 'M_{' + L.j + '} = E(x,y;' + [L.sh.a, L.sh.b, L.sh.p, L.sh.q, L.sh.t].map(v => num(v, true)).join(',') + '),\\quad C_{' + L.j + '}(v) = ' + fracTeX(L.q))).join('\n');
+  $('result').hidden = false;
+  typeset(f);
+}
+function typeset(el, tries){
+  tries = tries || 0;
+  if (window.MathJax && MathJax.typesetPromise){ if (MathJax.typesetClear) MathJax.typesetClear([el]); MathJax.typesetPromise([el]).catch(() => {}); }
+  else if (tries < 40) setTimeout(() => typeset(el, tries + 1), 250);
+  else el.querySelectorAll('.eq').forEach(d => d.classList.add('raw'));
+}
+
+$('copyTex').addEventListener('click', async () => {
+  const t = $('latexOut'), b = $('copyTex'); t.hidden = false;
+  try { await navigator.clipboard.writeText(t.value); b.textContent = 'Copied'; }
+  catch(e){ t.focus(); t.select(); b.textContent = 'Select the text below and copy'; }
+  setTimeout(() => { b.textContent = 'Copy as LaTeX'; }, 2500);
+});
+$('run').addEventListener('click', start);
+
+/* open in a working state: the sample, at the quickest level */
+refreshLevelUI();
+const s0 = sampleImage();
+const boot = () => { setSource(s0, 'Sunset', 'Sample: sunset and sailboat'); start(); };
+if (s0.complete) boot(); else s0.onload = boot;
+})();
+</script>
+</body>
+</html>
