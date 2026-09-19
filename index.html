@@ -429,10 +429,29 @@ function step(J){
   if (!best) return false;
   for (let k = 0; k < J.H; k++){ const m = mutate(best.sh), s = score(J, m); if (s && s.delta < best.s.delta) best = {sh: m, s}; }
   if (best.s.delta >= 0) return false;
-  best.sh.col = best.s.col; apply(J, best.sh); J.shapes.push(best.sh); return true;
+  best.sh.col = best.s.col; apply(J, best.sh); J.shapes.push(best.sh); if (J.D) layer(J.D, best.sh); return true;
 }
 
 /* ---------------- drawing ---------------- */
+function surface(J, long){              // same x, y as the formula, at a finer pixel grid, starting from the gradient
+  const s = long/Math.max(J.w, J.h), W = Math.round(J.w*s/2)*2, Hh = Math.round(J.h*s/2)*2, cs = coords(W, Hh);
+  const O = {w: W, h: Hh, half: cs.half, X: cs.X, Y: cs.Y, C: new Float32Array(W*Hh*3)};
+  for (let j = 0; j < Hh; j++) for (let i = 0; i < W; i++){ const p = (j*W + i)*3; for (let c = 0; c < 3; c++) O.C[p+c] = bgValue(J.bg, c, O.X[i], O.Y[j]); }
+  return O;
+}
+function layer(O, sh){                  // one factor of the product: C <- C(1 - M) + c M
+  const [i0, i1, j0, j1] = bbox(O, sh), ct = Math.cos(sh.t), st = Math.sin(sh.t), W = O.w;
+  for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++){
+    const M = maskAt(sh, O.X[i], O.Y[j], ct, st); if (!M) continue; const p = (j*W + i)*3;
+    for (let c = 0; c < 3; c++) O.C[p+c] += M*(sh.col[c] - O.C[p+c]);
+  }
+}
+function drawFast(cv, O){               // preview only: plain clamp, same as F on [0, 1]
+  if (cv.width !== O.w || cv.height !== O.h){ cv.width = O.w; cv.height = O.h; O.img = null; }
+  const g = cv.getContext('2d'), im = O.img || (O.img = g.createImageData(O.w, O.h)), d = im.data, C = O.C;
+  for (let i = 0, n = O.w*O.h; i < n; i++){ d[i*4] = 255*C[i*3]; d[i*4+1] = 255*C[i*3+1]; d[i*4+2] = 255*C[i*3+2]; d[i*4+3] = 255; }
+  g.putImageData(im, 0, 0);
+}
 function F(t){ return Math.floor(255*Math.exp(-Math.exp(-1000*t))*Math.pow(Math.abs(t), Math.exp(-Math.exp(1000*(t - 1))))); }
 function drawFloat(cv, w, h, C){
   cv.width = w; cv.height = h; const g = cv.getContext('2d'), im = g.createImageData(w, h);
@@ -473,8 +492,9 @@ function start(){
     for (let c = 0; c < 3; c++){ J.C[p+c] = bgValue(J.bg, c, J.X[i], J.Y[j]); const d = J.C[p+c] - J.T[p+c]; e += d*d; }
     J.err[j*J.w + i] = e; J.sumErr += e;
   }
+  J.D = surface(J, 900);
   job = J;
-  setAxes(J.w, J.h); drawSource(); drawFloat($('cvLive'), J.w, J.h, J.C);
+  setAxes(J.w, J.h); drawSource(); drawFast($('cvLive'), J.D);
   $('run').textContent = 'Stop and write the formula'; $('run').classList.add('stop');
   $('tick').textContent = 'B_v(x, y): a linear gradient';
   locks().forEach(el => el.disabled = true);
@@ -494,13 +514,13 @@ function loop(){
   $('sEta').textContent = fmtTime(Math.max(0, J.B - el));
   $('sErr').textContent = (255*Math.sqrt(J.sumErr/(J.w*J.h*3))).toFixed(1);
   if (performance.now() - J.lastDraw > 150){
-    drawFloat($('cvLive'), J.w, J.h, J.C); J.lastDraw = performance.now();
+    drawFast($('cvLive'), J.D); J.lastDraw = performance.now();
     if (n) $('tick').innerHTML = termHTML(J.shapes[n - 1], n);
   }
   if (n < J.N && !J.stop && J.stall <= 60 && el < J.B) setTimeout(loop, 0); else finish();
 }
 function finish(){
-  const J = job; J.running = false; drawFloat($('cvLive'), J.w, J.h, J.C);
+  const J = job; J.running = false; drawFast($('cvLive'), J.D);
   if (J.shapes.length) $('tick').innerHTML = termHTML(J.shapes[J.shapes.length - 1], J.shapes.length);
   $('sEta').textContent = 'done'; $('fill').style.width = '100%';
   $('run').disabled = true; $('run').classList.remove('stop'); $('run').textContent = 'Evaluating the formula…';
@@ -509,19 +529,11 @@ function finish(){
 
 /* ---------------- final render from the written formula ---------------- */
 function renderFinal(J){
-  const s = 1000/Math.max(J.w, J.h), W = Math.round(J.w*s/2)*2, Hh = Math.round(J.h*s/2)*2, cs = coords(W, Hh);
-  const O = {w: W, h: Hh, half: cs.half, X: cs.X, Y: cs.Y, C: new Float32Array(W*Hh*3)};
-  for (let j = 0; j < Hh; j++) for (let i = 0; i < W; i++){ const p = (j*W + i)*3; for (let c = 0; c < 3; c++) O.C[p+c] = bgValue(J.bg, c, O.X[i], O.Y[j]); }
+  const O = surface(J, 1000), W = O.w, Hh = O.h;
   let k = 0;
   (function chunk(){
     const end = Math.min(J.shapes.length, k + 25);
-    for (; k < end; k++){
-      const sh = J.shapes[k], [i0, i1, j0, j1] = bbox(O, sh), ct = Math.cos(sh.t), st = Math.sin(sh.t);
-      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++){
-        const M = maskAt(sh, O.X[i], O.Y[j], ct, st); if (!M) continue; const p = (j*W + i)*3;
-        for (let c = 0; c < 3; c++) O.C[p+c] += M*(sh.col[c] - O.C[p+c]);
-      }
-    }
+    for (; k < end; k++) layer(O, J.shapes[k]);
     if (k < J.shapes.length) return setTimeout(chunk, 0);
     const cv = document.createElement('canvas'); drawFloat(cv, W, Hh, O.C);
     $('finalImg').src = cv.toDataURL('image/png');
