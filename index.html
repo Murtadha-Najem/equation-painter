@@ -590,7 +590,7 @@ function formulaParts(J, W, Hh){
   const eqs = [
     'F(t) = \\left\\lfloor 255\\, e^{-e^{-1000t}}\\, |t|^{e^{-e^{1000(t-1)}}} \\right\\rfloor, \\qquad x = \\frac{m - ' + W/2 + '}{' + half + '}, \\quad y = \\frac{' + Hh/2 + ' - n}{' + half + '},',
     'H_v(x,y) = B_v(x,y)\\prod_{j=1}^{' + N + '}\\bigl(1 - M_j(x,y)\\bigr) + \\sum_{j=1}^{' + N + '} C_j(v)\\, M_j(x,y) \\prod_{i=j+1}^{' + N + '}\\bigl(1 - M_i(x,y)\\bigr),',
-    'E(x,y;a,b,p,q,\\theta,k) = e^{-e^{k\\left(\\frac{\\left((x-a)\\cos\\theta + (y-b)\\sin\\theta\\right)^2}{p^2} + \\frac{\\left((y-b)\\cos\\theta - (x-a)\\sin\\theta\\right)^2}{q^2} - 1\\right)}},',
+    'E(x,y;a,b,p,q,\\theta,k) = e^{-e^{k\\left(U^2/p^2 + V^2/q^2 - 1\\right)}}, \\quad U = (x-a)\\cos\\theta + (y-b)\\sin\\theta, \\quad V = (y-b)\\cos\\theta - (x-a)\\sin\\theta,',
     'B_v(x,y) = ' + fracTeX(bgq[0]) + ' + ' + fracTeX(bgq[1]) + 'x + ' + fracTeX(bgq[2]) + 'y,'
   ];
   const lines = J.shapes.map((sh, j) => ({sh, j: j + 1, q: quad(Math.round(sh.col[0]*40), Math.round(sh.col[1]*40), Math.round(sh.col[2]*40), 40)}));
