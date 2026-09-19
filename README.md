@@ -8,6 +8,6 @@ Everything runs in the browser. The picture never leaves the device.
 
 Each pixel (m, n) gets the colour rgb(F(H0), F(H1), F(H2)). H_v is a linear gradient with N soft ellipses laid over it. Each ellipse is a mask e^(-e^z), close to 1 inside and 0 outside, and its colour is a quadratic in v that passes through the red, green and blue values at v = 0, 1, 2.
 
-A greedy search adds one ellipse at a time: random tries, biased toward the pixels furthest from the picture, then small nudges to the best one. Constants are rounded to two decimals during the search, and the final picture is computed again from the printed numbers, so the formula shown is exactly the one that drew it.
+Each term is a soft, bendable ellipse with its own edge sharpness, and its colour is alpha + gamma U + delta W per channel (U, W its own axes), so every term carries its own shading. A greedy search adds one term at a time: 64 random candidates at the places furthest from the picture, scored at half resolution with colours solved exactly by least squares, then nudged at full resolution inside the term's own window. Terms are never smaller than a pixel and a half of the picture it reads, and there is at most one term for every 40 of its pixels; when the budget allows more, each term is searched harder instead. Constants are rounded to three decimals during the search, and the final picture is computed again from the printed numbers, so the formula shown is exactly the one that drew it.
 
-The formula stores no pixels. Each term is nine numbers. The search does read the picture to measure the difference, as any automatic fit must.
+The formula stores no pixels. Each term is sixteen numbers. The search does read the picture to measure the difference, as any automatic fit must.

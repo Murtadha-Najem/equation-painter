@@ -249,21 +249,21 @@ html{-webkit-text-size-adjust:100%}body{margin:0}img{max-width:100%}[hidden]{dis
       <article>
         <h3>A soft mask</h3>
         <div class="snip">e<sup>−e<sup>z</sup></sup></div>
-        <p>Close to 1 where z is negative, close to 0 where it is positive. Put an ellipse inside z and you get a stencil; the factor k in front sets how sharp its edge is, from a soft glow at 2 to a crisp line at 32. Every term is one of these.</p>
+        <p>Close to 1 where z is negative, close to 0 where it is positive. Put an ellipse inside z and you get a stencil; the factor k in front sets how sharp its edge is, from a soft glow at 2 to a crisp line at 300, and a bend term curves it. Every term is one of these.</p>
       </article>
       <article>
         <h3>Three colours from one line</h3>
-        <div class="snip">C<sub>j</sub>(v) = (a + bv + cv²)/d</div>
+        <div class="snip">α<sub>j</sub>(v) + γ<sub>j</sub>(v)U + δ<sub>j</sub>(v)W</div>
         <div class="chips"><span class="chip" style="background:var(--r)">v = 0</span><span class="chip" style="background:var(--g)">v = 1</span><span class="chip" style="background:var(--b)">v = 2</span></div>
-        <p>A quadratic in v passes through the red, green and blue value of a term, so one expression gives all three channels.</p>
+        <p>Each coefficient is a quadratic in v through the red, green and blue values, so one expression gives all three channels; the U and W parts shade the term across its own axes. All three are solved exactly by least squares.</p>
       </article>
       <article>
         <h3>Search, then round</h3>
-        <div class="snip">θ = 1.57, p = 0.21, k = 16</div>
-        <p>Each new term tries random spots, favouring the ones furthest from your picture, then nudges the best. The time you pick sets how hard each term searches: a longer budget reads the picture in finer detail and places every term more carefully. Numbers are rounded to two decimals as it goes, so the formula printed is exactly the one that drew.</p>
+        <div class="snip">θ = 1.571, p = 0.214, k = 25</div>
+        <p>Each new term tries 64 random spots, favouring the ones furthest from your picture, scored at half resolution, then nudges the best one 160 times at full resolution inside its own window. Longer budgets read the picture in finer detail and add more terms. Numbers are rounded to two decimals as it goes, so the formula printed is exactly the one that drew.</p>
       </article>
     </div>
-    <p class="honest"><b>What it does and does not do.</b> The formula stores no pixels: each term is nine numbers, so even a 1,000 term picture carries about nine thousand constants against hundreds of thousands of pixels. The search does read your image to measure the difference, as any automatic fit must. Yeganeh designs each term by hand and each one means something, an eye or a fin; here each term is a patch the search chose.</p>
+    <p class="honest"><b>What it does and does not do.</b> The formula stores no pixels: each term is sixteen numbers, so a 1,000 term picture carries about sixteen thousand constants against the 1.2 million pixels it paints. The search does read your image to measure the difference, as any automatic fit must. Yeganeh designs each term by hand and each one means something, an eye or a fin; here each term is a patch the search chose.</p>
   </section>
 </div>
 
@@ -286,14 +286,14 @@ const LEVELS = [
 ];
 // longer budgets read the picture at a higher resolution and allow a longer formula
 function plan(min){
-  return {min, B: min*60, L: Math.round(200 + 200*Math.min(1, Math.log(min)/Math.log(30))), cap: Math.round(400*Math.pow(min, 0.68))};
+  return {min, B: min*60, L: 2*Math.round((240 + 160*Math.min(1, Math.log(min)/Math.log(30)))/2)};
 }
 const minLabel = m => m + (m === 1 ? ' minute' : ' minutes');
 const lvBox = $('levels');
 LEVELS.forEach((lv, k) => {
   const d = document.createElement('div'); d.className = 'lv';
   const dots = '<div class="dots">' + [0,1,2,3].map(i => '<i class="' + (!lv.custom && i <= k ? 'on' : '') + '"></i>').join('') + '</div>';
-  const sub = lv.custom ? '<small>1 to 60 min</small><small>your pick</small>' : '<small>' + lv.min + ' min</small><small>&le; ' + plan(lv.min).cap + ' terms</small>';
+  const sub = lv.custom ? '<small>1 to 60 min</small><small>your pick</small>' : '<small>' + lv.min + ' min</small><small>reads ' + plan(lv.min).L + ' px</small>';
   d.innerHTML = '<input type="radio" name="level" id="lv_' + lv.id + '" value="' + lv.id + '"' + (k === 0 ? ' checked' : '') + '><label for="lv_' + lv.id + '">' + dots + '<b>' + lv.name + '</b>' + sub + '</label>';
   lvBox.appendChild(d);
 });
@@ -305,7 +305,7 @@ function refreshLevelUI(){
   $('custom').hidden = document.querySelector('input[name=level]:checked').value !== 'custom';
   $('minutesOut').textContent = $('minutes').value + ' min';
   const lv = currentLevel();
-  $('est').innerHTML = '<b>' + minLabel(lv.min) + '</b>, up to ' + lv.cap + ' terms, picture read at ' + lv.L + ' px';
+  $('est').innerHTML = '<b>' + minLabel(lv.min) + '</b>; the picture is read at ' + lv.L + ' px and every second goes into more terms';
 }
 lvBox.addEventListener('change', refreshLevelUI);
 $('minutes').addEventListener('input', refreshLevelUI);
@@ -340,9 +340,17 @@ function loadFile(f){
 }
 
 /* ---------------- engine ---------------- */
+/* One term: a soft, bendable ellipse M = e^{-e^{k(U^2+W^2-1)}} with its own colour and shading
+   alpha + gamma U + delta W per channel (each printed as a quadratic in v). Terms are found one at a time:
+   64 random candidates where the error is largest, scored at half resolution with exact least-squares colours,
+   then 10 rounds of 16 nudges at full resolution inside the term's own window. Constants are rounded while
+   searching, so the printed formula is exactly the one that paints. */
 const PI = Math.PI;
-const q2 = v => Math.round(v*100)/100;
-let job = null;
+const r3 = v => Math.round(v*1000)/1000;
+const KS = [3, 6, 12, 25, 50, 100];
+let job = null, MIN_SIZE = 0.004;
+
+function mulberry32(a){ return function(){ a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0)/4294967296; }; }
 
 function prepare(img, L){
   const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height, s = L/Math.max(iw, ih);
@@ -372,73 +380,124 @@ function fitBackground(J){
   return R.map(b => [0,1,2].map(k => Math.round(80*det(A.map((row, r) => row.map((v, cc) => cc === k ? b[r] : v)))/D)));
 }
 const bgValue = (bg, c, x, y) => (bg[c][0] + bg[c][1]*x + bg[c][2]*y)/80;
+const cl01 = v => v < 0 ? 0 : (v > 1 ? 1 : v);
 
-function bbox(J, sh){
-  const r = Math.sqrt(1 + 5/sh.k)*Math.max(sh.p, sh.q), {half, w, h} = J;
+// reach of a term: M < e^{-148} once k(U^2+W^2-1) > 5
+function reach(sh){ const f = 1 + 5/sh.k, m = Math.max(sh.p, sh.q); return Math.sqrt(f)*m + Math.abs(sh.bend)*sh.q*sh.q*f + 0.002; }
+function bbox(O, sh){
+  const r = reach(sh), {half, w, h} = O;
   return [Math.max(0, Math.floor((sh.a - r)*half + w/2 - 1)), Math.min(w - 1, Math.ceil((sh.a + r)*half + w/2 - 1)),
           Math.max(0, Math.floor(h/2 - 1 - (sh.b + r)*half)), Math.min(h - 1, Math.ceil(h/2 - 1 - (sh.b - r)*half))];
 }
-function maskAt(sh, x, y, ct, st){
-  const dx = x - sh.a, dy = y - sh.b, u = dx*ct + dy*st, v = dy*ct - dx*st;
-  const z = sh.k*(u*u/(sh.p*sh.p) + v*v/(sh.q*sh.q) - 1);
-  if (z > 5) return 0; if (z < -40) return 1;
-  return Math.exp(-Math.exp(z));
+// mask and the two shading coordinates at one point; writes into out[0..2]
+function termAt(sh, x, y, ct, st, out){
+  const dx = x - sh.a, dy = y - sh.b, V = dy*ct - dx*st;
+  const U = (dx*ct + dy*st + sh.bend*V*V)/sh.p, W = V/sh.q;
+  const z = sh.k*(U*U + W*W - 1);
+  out[0] = z > 5 ? 0 : (z < -40 ? 1 : Math.exp(-Math.exp(z)));
+  out[1] = U < -3 ? -3 : (U > 3 ? 3 : U); out[2] = W < -3 ? -3 : (W > 3 ? 3 : W);
 }
-function score(J, sh){
-  const [i0, i1, j0, j1] = bbox(J, sh); if (i1 < i0 || j1 < j0) return null;
-  const {w, C, T, X, Y, buf} = J, ct = Math.cos(sh.t), st = Math.sin(sh.t);
-  let sMM = 0, n0 = 0, n1 = 0, n2 = 0, k = 0;
+const tmp = new Float64Array(3);
+function solve3(A, b){   // A symmetric 3x3 as [a00,a01,a02,a11,a12,a22]
+  const a00 = A[0] + 1e-6, a01 = A[1], a02 = A[2], a11 = A[3] + 1e-6, a12 = A[4], a22 = A[5] + 1e-6;
+  const c00 = a11*a22 - a12*a12, c01 = a02*a12 - a01*a22, c02 = a01*a12 - a02*a11;
+  const det = a00*c00 + a01*c01 + a02*c02; if (Math.abs(det) < 1e-12) return [b[0]/a00, 0, 0];
+  const c11 = a00*a22 - a02*a02, c12 = a01*a02 - a00*a12, c22 = a00*a11 - a01*a01;
+  return [(c00*b[0] + c01*b[1] + c02*b[2])/det, (c01*b[0] + c11*b[1] + c12*b[2])/det, (c02*b[0] + c12*b[1] + c22*b[2])/det];
+}
+/* score a term on grid G (full or half): exact least-squares colours, rounded, and the drop in squared error */
+function score(G, sh){
+  const [i0, i1, j0, j1] = bbox(G, sh); if (i1 < i0 || j1 < j0) return null;
+  const {w, C, T, X, Y, bm, bu, bw} = G, ct = Math.cos(sh.t), st = Math.sin(sh.t);
+  const A = [0,0,0,0,0,0], B = [[0,0,0],[0,0,0],[0,0,0]]; let k = 0, any = false;
   for (let j = j0; j <= j1; j++){ const y = Y[j];
     for (let i = i0; i <= i1; i++, k++){
-      const M = maskAt(sh, X[i], y, ct, st); buf[k] = M; if (!M) continue;
-      const p = (j*w + i)*3; sMM += M*M;
-      n0 += M*(T[p] - C[p]*(1 - M)); n1 += M*(T[p+1] - C[p+1]*(1 - M)); n2 += M*(T[p+2] - C[p+2]*(1 - M));
+      termAt(sh, X[i], y, ct, st, tmp); const M = tmp[0]; bm[k] = M; if (!M) continue;
+      any = true; const U = tmp[1], W = tmp[2]; bu[k] = U; bw[k] = W;
+      const f0 = M, f1 = M*U, f2 = M*W, p = (j*w + i)*3;
+      A[0] += f0*f0; A[1] += f0*f1; A[2] += f0*f2; A[3] += f1*f1; A[4] += f1*f2; A[5] += f2*f2;
+      for (let c = 0; c < 3; c++){ const yv = T[p+c] - C[p+c]*(1 - M); B[c][0] += f0*yv; B[c][1] += f1*yv; B[c][2] += f2*yv; }
     }
   }
-  if (sMM < 1e-6) return null;
-  const col = [n0, n1, n2].map(n => Math.round(40*Math.min(1, Math.max(0, n/sMM)))/40);
+  if (!any || A[0] < 1e-6) return null;
+  const col = [0,1,2].map(c => { const s = solve3(A, B[c]);
+    return [Math.round(40*Math.min(1.3, Math.max(0, s[0])))/40, Math.round(40*Math.min(1, Math.max(-1, s[1])))/40, Math.round(40*Math.min(1, Math.max(-1, s[2])))/40]; });
   let delta = 0; k = 0;
   for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++, k++){
-    const M = buf[k]; if (!M) continue; const p = (j*w + i)*3;
-    for (let c = 0; c < 3; c++){ const cur = C[p+c], tg = T[p+c], nv = cur + M*(col[c] - cur); delta += (nv - tg)*(nv - tg) - (cur - tg)*(cur - tg); }
+    const M = bm[k]; if (!M) continue; const p = (j*w + i)*3, U = bu[k], W = bw[k];
+    for (let c = 0; c < 3; c++){
+      const cur = C[p+c], tg = T[p+c], v = cur*(1 - M) + M*(col[c][0] + col[c][1]*U + col[c][2]*W);
+      const e1 = cl01(v) - tg, e0 = cl01(cur) - tg; delta += e1*e1 - e0*e0;
+    }
   }
   return {delta, col};
 }
-function apply(J, sh){
-  const [i0, i1, j0, j1] = bbox(J, sh), {w, C, T, X, Y, err} = J, ct = Math.cos(sh.t), st = Math.sin(sh.t);
+function paintTerm(O, sh, errOf){        // C <- C(1 - M) + M(alpha + gamma U + delta W), inside the term's window
+  const [i0, i1, j0, j1] = bbox(O, sh), {w, C, X, Y} = O, ct = Math.cos(sh.t), st = Math.sin(sh.t);
   for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++){
-    const M = maskAt(sh, X[i], Y[j], ct, st); if (!M) continue; const p = (j*w + i)*3; let e = 0;
-    for (let c = 0; c < 3; c++){ C[p+c] += M*(sh.col[c] - C[p+c]); const d = C[p+c] - T[p+c]; e += d*d; }
-    J.sumErr += e - err[j*w + i]; err[j*w + i] = e;
+    termAt(sh, X[i], Y[j], ct, st, tmp); const M = tmp[0]; if (!M) continue;
+    const p = (j*w + i)*3, U = tmp[1], W = tmp[2];
+    for (let c = 0; c < 3; c++) C[p+c] = C[p+c]*(1 - M) + M*(sh.col[c][0] + sh.col[c][1]*U + sh.col[c][2]*W);
+    if (errOf) errOf(j*w + i, p);
   }
 }
 function quant(sh){
-  sh.a = q2(sh.a); sh.b = q2(sh.b); sh.p = Math.max(0.01, Math.min(1.5, q2(sh.p))); sh.q = Math.max(0.01, Math.min(1.5, q2(sh.q)));
-  let t = sh.t % PI; if (t < 0) t += PI; sh.t = Math.min(3.14, q2(t)); sh.e = Math.max(1, Math.min(5, sh.e)); sh.k = 2**sh.e; return sh;
+  sh.a = r3(sh.a); sh.b = r3(sh.b); sh.p = Math.max(MIN_SIZE, Math.min(2, r3(sh.p))); sh.q = Math.max(MIN_SIZE, Math.min(2, r3(sh.q)));
+  let t = sh.t % PI; if (t < 0) t += PI; sh.t = Math.min(3.141, r3(t));
+  sh.bend = Math.max(-6, Math.min(6, Math.round(sh.bend*100)/100)); sh.k = Math.max(2, Math.min(300, Math.round(sh.k)));
+  return sh;
 }
-const gauss = () => { let u = 0, v = 0; while (!u) u = Math.random(); while (!v) v = Math.random(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*PI*v); };
-function randShape(J){
-  const {w, h, err, X, Y} = J; let best = -1, bi = 0;
-  for (let t = 0; t < 5; t++){ const idx = (Math.random()*w*h) | 0; if (err[idx] > best){ best = err[idx]; bi = idx; } }
-  const smax = 0.03 + 0.5*Math.max(0.05, 1 - J.shapes.length/J.N)**1.5;
-  return quant({a: X[bi % w], b: Y[(bi/w) | 0], p: 0.012 + Math.random()*smax, q: 0.012 + Math.random()*smax, t: Math.random()*PI, e: 2 + ((Math.random()*3) | 0)});
-}
-function mutate(sh){
-  const m = {a: sh.a, b: sh.b, p: sh.p, q: sh.q, t: sh.t, e: sh.e}, g = gauss(), sd = Math.max(0.01, 0.3*Math.max(sh.p, sh.q));
-  switch ((Math.random()*6) | 0){
-    case 0: m.a += sd*g; break; case 1: m.b += sd*g; break;
-    case 2: m.p *= Math.exp(0.25*g); break; case 3: m.q *= Math.exp(0.25*g); break;
-    case 4: m.t += 0.35*g; break; default: m.e += g > 0 ? 1 : -1;
-  }
-  return quant(m);
+function gauss(rng){ let u = 0, v = 0; while (!u) u = rng(); while (!v) v = rng(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*PI*v); }
+function sampleIndex(J){               // a pixel, chosen with probability proportional to its error
+  const r = J.rng()*J.cum[J.cum.length - 1]; let lo = 0, hi = J.cum.length - 1;
+  while (lo < hi){ const mid = (lo + hi) >> 1; if (J.cum[mid] < r) lo = mid + 1; else hi = mid; }
+  return lo;
 }
 function step(J){
+  const {w, err, X, Y, rng} = J, n = w*J.h;
+  let acc = 0; for (let i = 0; i < n; i++){ acc += err[i]; J.cum[i] = acc; }
+  const frac = Math.min(1, (performance.now() - J.t0)/1000/J.B), smax = 0.04 + 0.6*Math.max(0.05, 1 - frac)**1.5;
   let best = null;
-  for (let r = 0; r < J.R; r++){ const sh = randShape(J), s = score(J, sh); if (s && (!best || s.delta < best.s.delta)) best = {sh, s}; }
+  for (let r = 0; r < J.R; r++){
+    const idx = sampleIndex(J);
+    const sh = quant({a: X[idx % w], b: Y[(idx/w) | 0], t: rng()*PI, p: 0.01 + rng()*smax, q: 0.01 + rng()*smax, bend: 0, k: KS[(rng()*KS.length) | 0]});
+    const s = score(J.G2, sh); if (s && (!best || s.delta < best.s.delta)) best = {sh, s};
+  }
   if (!best) return false;
-  for (let k = 0; k < J.H; k++){ const m = mutate(best.sh), s = score(J, m); if (s && s.delta < best.s.delta) best = {sh: m, s}; }
-  if (best.s.delta >= 0) return false;
-  best.sh.col = best.s.col; apply(J, best.sh); J.shapes.push(best.sh); if (J.D) layer(J.D, best.sh); return true;
+  let cur = {sh: best.sh, s: score(J, best.sh)}; if (!cur.s) return false;
+  for (let h = 0; h < J.Hn; h++){
+    for (let m = 0; m < 16; m++){
+      const b = cur.sh, sd = 0.3*Math.max(b.p, b.q);
+      const sh = quant({a: b.a + gauss(rng)*sd, b: b.b + gauss(rng)*sd, t: b.t + gauss(rng)*0.3, p: b.p*Math.exp(gauss(rng)*0.2), q: b.q*Math.exp(gauss(rng)*0.2),
+                        bend: b.bend + (rng() < 0.3 ? gauss(rng)*0.5 : 0), k: b.k*Math.exp(gauss(rng)*0.4)});
+      const s = score(J, sh); if (s && s.delta < cur.s.delta) cur = {sh, s};
+    }
+  }
+  if (cur.s.delta >= 0) return false;
+  const sh = cur.sh; sh.col = cur.s.col;
+  paintTerm(J, sh, (q, p) => { let e = 0; for (let c = 0; c < 3; c++){ const d = cl01(J.C[p+c]) - J.T[p+c]; e += d*d; } J.sumErr += e - err[q]; err[q] = e; });
+  syncHalf(J, sh);
+  J.shapes.push(sh); if (J.D) paintTerm(J.D, sh);
+  return true;
+}
+function makeHalf(J){                   // the half-resolution copy used for the first cut
+  const w2 = J.w/2, h2 = J.h/2, X2 = new Float32Array(w2), Y2 = new Float32Array(h2);
+  for (let i = 0; i < w2; i++) X2[i] = (J.X[2*i] + J.X[2*i + 1])/2;
+  for (let j = 0; j < h2; j++) Y2[j] = (J.Y[2*j] + J.Y[2*j + 1])/2;
+  const G = {w: w2, h: h2, half: J.half/2, X: X2, Y: Y2, C: new Float32Array(w2*h2*3), T: new Float32Array(w2*h2*3),
+             bm: new Float32Array(w2*h2), bu: new Float32Array(w2*h2), bw: new Float32Array(w2*h2)};
+  for (let j = 0; j < h2; j++) for (let i = 0; i < w2; i++) for (let c = 0; c < 3; c++){
+    const q = (j*w2 + i)*3 + c, a = ((2*j)*J.w + 2*i)*3 + c, b = a + 3, d = a + J.w*3, e = d + 3;
+    G.T[q] = (J.T[a] + J.T[b] + J.T[d] + J.T[e])/4; G.C[q] = (J.C[a] + J.C[b] + J.C[d] + J.C[e])/4;
+  }
+  return G;
+}
+function syncHalf(J, sh){
+  const G = J.G2, [i0, i1, j0, j1] = bbox(J, sh);
+  for (let j = j0 >> 1; j <= Math.min(G.h - 1, j1 >> 1); j++) for (let i = i0 >> 1; i <= Math.min(G.w - 1, i1 >> 1); i++) for (let c = 0; c < 3; c++){
+    const a = ((2*j)*J.w + 2*i)*3 + c;
+    G.C[(j*G.w + i)*3 + c] = (J.C[a] + J.C[a + 3] + J.C[a + J.w*3] + J.C[a + J.w*3 + 3])/4;
+  }
 }
 
 /* ---------------- drawing ---------------- */
@@ -448,13 +507,7 @@ function surface(J, long){              // same x, y as the formula, at a finer 
   for (let j = 0; j < Hh; j++) for (let i = 0; i < W; i++){ const p = (j*W + i)*3; for (let c = 0; c < 3; c++) O.C[p+c] = bgValue(J.bg, c, O.X[i], O.Y[j]); }
   return O;
 }
-function layer(O, sh){                  // one factor of the product: C <- C(1 - M) + c M
-  const [i0, i1, j0, j1] = bbox(O, sh), ct = Math.cos(sh.t), st = Math.sin(sh.t), W = O.w;
-  for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++){
-    const M = maskAt(sh, O.X[i], O.Y[j], ct, st); if (!M) continue; const p = (j*W + i)*3;
-    for (let c = 0; c < 3; c++) O.C[p+c] += M*(sh.col[c] - O.C[p+c]);
-  }
-}
+function layer(O, sh){ paintTerm(O, sh); }
 function drawFast(cv, O){               // preview only: plain clamp, same as F on [0, 1]
   if (cv.width !== O.w || cv.height !== O.h){ cv.width = O.w; cv.height = O.h; O.img = null; }
   const g = cv.getContext('2d'), im = O.img || (O.img = g.createImageData(O.w, O.h)), d = im.data, C = O.C;
@@ -482,9 +535,9 @@ function drawSource(){               // the source inset shows the picture itsel
   const g = cv.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(srcImg, 0, 0, cv.width, cv.height);
 }
 const fmtTime = s => s < 60 ? Math.round(s) + 's' : Math.floor(s/60) + 'm ' + String(Math.round(s % 60)).padStart(2, '0') + 's';
-const num = (v, tex) => { const s = String(Number(v.toFixed(2))); return tex ? s : s.replace('-', '−'); };
+const num = (v, tex) => { const s = String(Number(v.toFixed(3))); return tex ? s : s.replace('-', '−'); };
 function termHTML(sh, j){
-  return '<i>M</i><sub>' + j + '</sub> = <i>E</i>(<i>x</i>, <i>y</i>; ' + [sh.a, sh.b, sh.p, sh.q, sh.t].map(v => num(v, false)).join(', ') + ', ' + sh.k + ')';
+  return '<i>M</i><sub>' + j + '</sub>: (' + [sh.a, sh.b, sh.p, sh.q, sh.t, sh.bend].map(v => num(v, false)).join(', ') + ', ' + sh.k + ')';
 }
 
 /* ---------------- run ---------------- */
@@ -492,15 +545,19 @@ const locks = () => document.querySelectorAll('input[name=level], #minutes, #fil
 function start(){
   if (!srcImg || !srcImg.complete) return;
   if (job && job.running){ job.stop = true; return; }
-  const lv = currentLevel(), P = prepare(srcImg, lv.L), cs = coords(P.w, P.h);
-  const J = Object.assign({}, P, cs, {N: lv.cap, B: lv.B, f: 1, R: 30, H: 60, shapes: [], running: true, stop: false, stall: 0,
-    C: new Float32Array(P.w*P.h*3), err: new Float32Array(P.w*P.h), buf: new Float32Array(P.w*P.h), sumErr: 0, t0: performance.now(), lastDraw: 0});
+  const lv = currentLevel(), P = prepare(srcImg, lv.L), cs = coords(P.w, P.h), n = P.w*P.h;
+  const J = Object.assign({}, P, cs, {B: lv.B, shapes: [], running: true, stop: false, stall: 0, rng: mulberry32(20260919), R: 64, Hn: 10, f: 1,
+    cap: Math.round(n/40),
+    C: new Float32Array(n*3), err: new Float32Array(n), cum: new Float64Array(n), bm: new Float32Array(n), bu: new Float32Array(n), bw: new Float32Array(n),
+    sumErr: 0, t0: performance.now(), lastDraw: 0});
   J.bg = fitBackground(J);
   for (let j = 0; j < J.h; j++) for (let i = 0; i < J.w; i++){
     const p = (j*J.w + i)*3; let e = 0;
-    for (let c = 0; c < 3; c++){ J.C[p+c] = bgValue(J.bg, c, J.X[i], J.Y[j]); const d = J.C[p+c] - J.T[p+c]; e += d*d; }
-    J.err[j*J.w + i] = e; J.sumErr += e;
+    for (let c = 0; c < 3; c++){ J.C[p+c] = bgValue(J.bg, c, J.X[i], J.Y[j]); const d = cl01(J.C[p+c]) - J.T[p+c]; e += d*d; }
+    J.err[j*J.w + i] = e + 1e-9; J.sumErr += e;
   }
+  J.G2 = makeHalf(J);
+  MIN_SIZE = Math.max(0.004, 1.5/J.half);          // no term smaller than a pixel and a half of the picture it reads
   J.D = surface(J, 900);
   job = J;
   setAxes(J.w, J.h); drawSource(); drawFast($('cvLive'), J.D);
@@ -510,23 +567,25 @@ function start(){
   loop();
 }
 function loop(){
-  const J = job, sliceEnd = performance.now() + 28, tau = J.B/J.N;   // seconds each term may spend
-  while (J.shapes.length < J.N && !J.stop && performance.now() < sliceEnd && (performance.now() - J.t0)/1000 < J.B){
+  const J = job, sliceEnd = performance.now() + 30, stopAt = J.B*0.94 - 3;      // leave a little for the final render
+  while (!J.stop && J.shapes.length < J.cap && performance.now() < sliceEnd && (performance.now() - J.t0)/1000 < stopAt){
     const t = performance.now(), ok = step(J), dt = Math.max(1e-4, (performance.now() - t)/1000);
-    if (!ok){ if (++J.stall > 60) break; } else J.stall = 0;
-    J.f = Math.min(250, Math.max(0.5, J.f*Math.min(1.4, Math.max(0.7, Math.sqrt(tau/dt)))));
-    J.R = Math.max(20, Math.round(30*J.f)); J.H = Math.max(40, Math.round(60*J.f));
+    if (!ok){ if (++J.stall > 40) break; } else J.stall = 0;
+    // spread the budget evenly over the terms still allowed: faster than needed means search each term harder
+    const left = stopAt - (performance.now() - J.t0)/1000, tau = left/Math.max(1, J.cap - J.shapes.length);
+    J.f = Math.min(40, Math.max(1, J.f*Math.min(1.3, Math.max(0.75, Math.sqrt(tau/dt)))));
+    J.R = Math.round(64*J.f); J.Hn = Math.round(10*Math.sqrt(J.f));
   }
   const n = J.shapes.length, el = (performance.now() - J.t0)/1000;
   $('fill').style.width = Math.min(100, 100*el/J.B).toFixed(1) + '%';
-  $('sTerms').textContent = n; $('sTime').textContent = fmtTime(el);
+  $('sTerms').textContent = n + ' / ' + J.cap; $('sTime').textContent = fmtTime(el);
   $('sEta').textContent = fmtTime(Math.max(0, J.B - el));
   $('sErr').textContent = (255*Math.sqrt(J.sumErr/(J.w*J.h*3))).toFixed(1);
   if (performance.now() - J.lastDraw > 150){
     drawFast($('cvLive'), J.D); J.lastDraw = performance.now();
     if (n) $('tick').innerHTML = termHTML(J.shapes[n - 1], n);
   }
-  if (n < J.N && !J.stop && J.stall <= 60 && el < J.B) setTimeout(loop, 0); else finish();
+  if (!J.stop && J.stall <= 40 && el < stopAt && n < J.cap) setTimeout(loop, 0); else finish();
 }
 function finish(){
   const J = job; J.running = false; drawFast($('cvLive'), J.D);
@@ -542,7 +601,7 @@ async function renderFinal(J){
   if (!(window.MathJax && MathJax.tex2svg)) { await new Promise(r => { const t = setInterval(() => { if (window.MathJax && MathJax.tex2svg){ clearInterval(t); r(); } }, 200); }); }
   if (MathJax.startup && MathJax.startup.promise) await MathJax.startup.promise;
   let L = null;
-  for (const picH of [864, 800, 740, 680]){ L = await layoutPost(J, picH); if (L.fits) break; }
+  for (const picH of [864, 820]){ L = await layoutPost(J, picH); if (L.fits) break; }
   const O = surface(J, L.long);       // the picture, evaluated at the exact size it is printed
   let k = 0;
   (function chunk(){
@@ -587,13 +646,15 @@ const fracHTML = q => q.D === 1 ? '(' + polyText(q.P, false) + ')' : '(' + polyT
 function formulaParts(J, W, Hh){
   const N = J.shapes.length, half = Math.max(W, Hh)/2;
   const bgq = [0,1,2].map(k => quad(J.bg[0][k], J.bg[1][k], J.bg[2][k], 80));
+  const Bv = [fracTeX(bgq[0])].concat([[1, 'x'], [2, 'y']].filter(([k]) => bgq[k].P.some(c => c)).map(([k, v]) => fracTeX(bgq[k]) + v)).join(' + ');
   const eqs = [
     'F(t) = \\left\\lfloor 255\\, e^{-e^{-1000t}}\\, |t|^{e^{-e^{1000(t-1)}}} \\right\\rfloor, \\qquad x = \\frac{m - ' + W/2 + '}{' + half + '}, \\quad y = \\frac{' + Hh/2 + ' - n}{' + half + '},',
-    'H_v(x,y) = B_v(x,y)\\prod_{j=1}^{' + N + '}\\bigl(1 - M_j(x,y)\\bigr) + \\sum_{j=1}^{' + N + '} C_j(v)\\, M_j(x,y) \\prod_{i=j+1}^{' + N + '}\\bigl(1 - M_i(x,y)\\bigr),',
-    'E(x,y;a,b,p,q,\\theta,k) = e^{-e^{k\\left(U^2/p^2 + V^2/q^2 - 1\\right)}}, \\quad U = (x-a)\\cos\\theta + (y-b)\\sin\\theta, \\quad V = (y-b)\\cos\\theta - (x-a)\\sin\\theta,',
-    'B_v(x,y) = ' + fracTeX(bgq[0]) + ' + ' + fracTeX(bgq[1]) + 'x + ' + fracTeX(bgq[2]) + 'y,'
+    'H_v(x,y) = B_v(x,y)\\prod_{j=1}^{' + N + '}\\bigl(1 - M_j(x,y)\\bigr) + \\sum_{j=1}^{' + N + '} C_{j,v}(x,y)\\, M_j(x,y) \\prod_{i=j+1}^{' + N + '}\\bigl(1 - M_i(x,y)\\bigr),',
+    'M_j(x,y) = e^{-e^{k_j\\left(U_j^2 + W_j^2 - 1\\right)}}, \\quad U_j = \\frac{(x-a_j)\\cos\\theta_j + (y-b_j)\\sin\\theta_j + \\beta_j V_j^2}{p_j}, \\quad V_j = (y-b_j)\\cos\\theta_j - (x-a_j)\\sin\\theta_j,',
+    'W_j = \\frac{V_j}{q_j}, \\quad C_{j,v}(x,y) = \\alpha_j(v) + \\gamma_j(v)\\,U_j + \\delta_j(v)\\,W_j, \\quad B_v(x,y) = ' + Bv + ','
   ];
-  const lines = J.shapes.map((sh, j) => ({sh, j: j + 1, q: quad(Math.round(sh.col[0]*40), Math.round(sh.col[1]*40), Math.round(sh.col[2]*40), 40)}));
+  const q40 = c => quad(Math.round(c[0]*40), Math.round(c[1]*40), Math.round(c[2]*40), 40);
+  const lines = J.shapes.map((sh, j) => ({sh, j: j + 1, cols: [0, 1, 2].map(f => q40([sh.col[0][f], sh.col[1][f], sh.col[2][f]]))}));
   return {N, eqs, lines, title: srcName + ' in ' + N + ' Ellipses',
     intro: 'This image shows ' + N + ' soft ellipses laid over a linear gradient. For m = 1, 2, 3, …, ' + W + ' and n = 1, 2, 3, …, ' + Hh +
            ', the color of the pixel of the row n and the column m is rgb(F(H₀(x, y)), F(H₁(x, y)), F(H₂(x, y))), where'};
@@ -603,10 +664,11 @@ function writeFormula(J, W, Hh){
   const intro = 'This image shows ' + N + ' soft ellipses laid over a linear gradient. For \\(m = 1, 2, 3, \\ldots, ' + W + '\\) and \\(n = 1, 2, 3, \\ldots, ' + Hh + '\\), the color of the pixel of the row \\(n\\) and the column \\(m\\) is \\(\\mathrm{rgb}\\bigl(F(H_0(x,y)),\\ F(H_1(x,y)),\\ F(H_2(x,y))\\bigr)\\), where';
   const f = $('formula');
   f.innerHTML = '<p>' + intro + '</p>' + eqs.map(e => '<div class="eq">\\[' + e + '\\]</div>').join('') +
-    '<p>and for \\(j = 1, 2, \\ldots, ' + N + '\\), \\(M_j(x,y) = E(x, y; a_j, b_j, p_j, q_j, \\theta_j, k_j)\\), where</p>' +
-    '<div class="params">' + lines.map(L => '<div>' + termHTML(L.sh, L.j) + ', &nbsp;<i>C</i><sub>' + L.j + '</sub>(<i>v</i>) = ' + fracHTML(L.q) + '</div>').join('') + '</div>';
+    '<p>and for \\(j = 1, 2, \\ldots, ' + N + '\\) the constants are \\(j:\\ (a_j, b_j, p_j, q_j, \\theta_j, \\beta_j, k_j)\\ \\ \\alpha_j(v);\\ \\gamma_j(v);\\ \\delta_j(v)\\):</p>' +
+    '<div class="params">' + lines.map(L => '<div>' + entryText(L) + '</div>').join('') + '</div>';
   $('latexOut').value = ['% ' + title, '\\mathrm{rgb}\\bigl(F(H_0(x,y)), F(H_1(x,y)), F(H_2(x,y))\\bigr),\\ m=1,\\ldots,' + W + ',\\ n=1,\\ldots,' + Hh].concat(eqs)
-    .concat(lines.map(L => 'M_{' + L.j + '} = E(x,y;' + [L.sh.a, L.sh.b, L.sh.p, L.sh.q, L.sh.t].map(v => num(v, true)).join(',') + ',' + L.sh.k + '),\\quad C_{' + L.j + '}(v) = ' + fracTeX(L.q))).join('\n');
+    .concat(lines.map(L => '(a,b,p,q,\\theta,\\beta,k)_{' + L.j + '} = (' + [L.sh.a, L.sh.b, L.sh.p, L.sh.q, L.sh.t, L.sh.bend].map(v => num(v, true)).join(',') + ',' + L.sh.k +
+      '),\\ \\alpha_{' + L.j + '} = ' + fracTeX(L.cols[0]) + ',\\ \\gamma_{' + L.j + '} = ' + fracTeX(L.cols[1]) + ',\\ \\delta_{' + L.j + '} = ' + fracTeX(L.cols[2]))).join('\n');
   typeset(f);
 }
 
@@ -626,7 +688,7 @@ function wrap(g, text, maxW){
   for (const w of words){ const t = line ? line + ' ' + w : w; if (g.measureText(t).width > maxW && line){ out.push(line); line = w; } else line = t; }
   if (line) out.push(line); return out;
 }
-function entryText(L){ return L.j + ': (' + [L.sh.a, L.sh.b, L.sh.p, L.sh.q, L.sh.t].map(v => num(v, false)).join(', ') + ', ' + L.sh.k + ')  ' + fracHTML(L.q); }
+function entryText(L){ return L.j + ': (' + [L.sh.a, L.sh.b, L.sh.p, L.sh.q, L.sh.t, L.sh.bend].map(v => num(v, false)).join(', ') + ', ' + L.sh.k + ')  ' + L.cols.map(fracHTML).join('; '); }
 async function layoutPost(J, picH){
   // picture size inside the square, then everything that must fit under it
   const long = Math.round(Math.max(J.w, J.h)*Math.min(POST/J.w, picH/J.h)), s = long/Math.max(J.w, J.h), W = Math.round(J.w*s/2)*2, Hh = Math.round(J.h*s/2)*2;   // same grid surface() builds
@@ -634,7 +696,7 @@ async function layoutPost(J, picH){
   g.font = '21px ' + SERIF; const introLines = wrap(g, parts.intro, maxW);
   const eqImgs = [];
   for (const e of parts.eqs){ let m = await mathImage(e, 9.5); if (m.w > maxW){ m = await mathImage(e, 9.5*maxW/m.w); } eqImgs.push(m); }
-  const head = await mathImage('\\text{and for } j = 1, 2, \\ldots, ' + parts.N + ',\\quad M_j(x,y) = E(x,y;a_j,b_j,p_j,q_j,\\theta_j,k_j),\\quad \\text{listed below as}\\quad j:\\ (a_j, b_j, p_j, q_j, \\theta_j, k_j)\\ \\ C_j(v)', 8.5);
+  const head = await mathImage('\\text{and for } j = 1, 2, \\ldots, ' + parts.N + '\\text{ the constants are listed as}\\quad j:\\ (a_j, b_j, p_j, q_j, \\theta_j, \\beta_j, k_j)\\ \\ \\alpha_j(v);\\ \\gamma_j(v);\\ \\delta_j(v)', 8.5);
   let y = Hh + 22 + 30 + 10 + introLines.length*28 + 6;
   for (const m of eqImgs) y += m.h + 4;
   y += 8 + head.h + 6;                           // the heading line for the constants
@@ -673,7 +735,7 @@ async function buildPost(J, pic){
   if (!L.fits){
     const c = Math.floor(cap/L.rows), r = cap % L.rows;
     g.font = 'italic ' + L.fs + 'px ' + SERIF;
-    g.fillText('and ' + (L.texts.length - cap) + ' more terms in the LaTeX source', PADX + c*L.colW, y + (r + 1)*L.fs*1.28);
+    g.fillText('and ' + (L.texts.length - cap) + ' more terms, all in the LaTeX source', PADX + c*L.colW, y + (r + 1)*L.fs*1.28);
   }
   return {cv, cap};
 }
