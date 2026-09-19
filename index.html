@@ -150,8 +150,13 @@ details.full .sheet{margin-top:10px}
 .eq{overflow-x:auto;overflow-y:hidden;margin:10px 0;padding:2px 0}
 .eq mjx-container{margin:0!important}
 .eq.raw{white-space:pre-wrap;font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#444}
-.params{columns:2 330px;column-gap:40px;font-size:15px;margin-top:6px}
-.params div{break-inside:avoid;white-space:nowrap;overflow-x:auto;font-variant-numeric:tabular-nums}
+.params{columns:2 380px;column-gap:40px;font-size:14px;margin-top:6px}
+.params div{break-inside:avoid;font-variant-numeric:tabular-nums;padding-left:1.4em;text-indent:-1.4em;margin-bottom:2px}
+.titlerow{display:flex;align-items:center;gap:12px}
+.titlerow label{font-size:13px;color:var(--muted);white-space:nowrap}
+.titlerow input{flex:1;min-width:0;font:inherit;padding:9px 12px;border-radius:10px;border:1px solid var(--line);background:var(--raised);color:var(--ink)}
+.titlerow input:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+@media print{*{-webkit-print-color-adjust:exact;print-color-adjust:exact}.eq{overflow:visible}}
 textarea#latexOut{width:100%;min-height:150px;font-family:"JetBrains Mono",ui-monospace,monospace;font-size:12px;background:var(--raised);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:12px}
 
 /* how it works */
@@ -204,6 +209,7 @@ html{-webkit-text-size-adjust:100%}body{margin:0}img{max-width:100%}[hidden]{dis
           <img id="thumb" alt="">
           <div><strong id="fileName">Sample: sunset and sailboat</strong><span>Click to choose, or drop an image here. One subject on a plain background works best.</span></div>
         </label>
+        <div class="titlerow"><label for="title">Title on the post</label><input id="title" type="text" maxlength="60" value="Sunset" placeholder="Picture" autocomplete="off"></div>
       </div>
 
       <div class="step">
@@ -325,7 +331,8 @@ function sampleImage(){
   g.beginPath(); g.moveTo(160,246); g.lineTo(160,170); g.lineTo(128,240); g.fill();
   const im = new Image(); im.src = c.toDataURL(); return im;
 }
-function setSource(img, name, label){ srcImg = img; srcName = name; $('thumb').src = img.src; $('fileName').textContent = label; }
+function setSource(img, name, label){ srcImg = img; srcName = name; $('thumb').src = img.src; $('fileName').textContent = label; $('title').value = name; }
+const postTitle = () => ($('title').value.trim() || 'Picture');
 $('file').addEventListener('change', e => { const f = e.target.files[0]; if (f) loadFile(f); });
 const drop = $('drop');
 ['dragenter','dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
@@ -334,8 +341,9 @@ drop.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f &&
 function loadFile(f){
   const r = new FileReader();
   r.onload = () => { const im = new Image(); im.onload = () => {
-    const nm = f.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim() || 'Picture';
-    setSource(im, nm.charAt(0).toUpperCase() + nm.slice(1), f.name); previewSource(); }; im.src = r.result; };
+    const nm = f.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+    const words = nm.length <= 40 && (nm.match(/[a-z]/gi) || []).length >= 3 && (nm.match(/\d/g) || []).length < nm.length*0.3;
+    setSource(im, words ? nm.charAt(0).toUpperCase() + nm.slice(1) : '', f.name); previewSource(); }; im.src = r.result; };
   r.readAsDataURL(f);
 }
 
@@ -541,7 +549,7 @@ function termHTML(sh, j){
 }
 
 /* ---------------- run ---------------- */
-const locks = () => document.querySelectorAll('input[name=level], #minutes, #file');
+const locks = () => document.querySelectorAll('input[name=level], #minutes, #file');   // the title stays editable
 function start(){
   if (!srcImg || !srcImg.complete) return;
   if (job && job.running){ job.stop = true; return; }
@@ -611,12 +619,8 @@ async function renderFinal(J){
     const pc = document.createElement('canvas'); drawFloat(pc, O.w, O.h, O.C);
     L.W = O.w; L.Hh = O.h;
     const live = $('cvLive'); live.width = O.w; live.height = O.h; live.getContext('2d').drawImage(pc, 0, 0);
-    buildPost(J, {canvas: pc, L}).then(({cv, cap}) => {
-      const url = cv.toDataURL('image/png');
-      $('postImg').src = url; $('dl').href = url; $('dl').download = (srcName || 'equation').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-').toLowerCase() + '-equation.png';
-      const note = $('postNote');
-      if (cap < J.shapes.length){ note.hidden = false; note.textContent = 'The square holds the first ' + cap + ' of ' + J.shapes.length + ' terms; the rest are in the full formula below and in the LaTeX source.'; }
-      else note.hidden = true;
+    J.post = {pc, L, picH: L.picH, W: O.w, H: O.h};
+    showPost(J).then(() => {
       writeFormula(J, O.w, O.h);
       $('result').hidden = false;
       $('run').disabled = false; $('run').textContent = 'Paint the equation';
@@ -624,6 +628,26 @@ async function renderFinal(J){
     });
   })();
 }
+
+async function showPost(J){
+  const {cv, cap} = await buildPost(J, {canvas: J.post.pc, L: J.post.L});
+  const url = cv.toDataURL('image/png');
+  $('postImg').src = url; $('dl').href = url;
+  $('dl').download = postTitle().replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-').toLowerCase() + '-equation.png';
+  const note = $('postNote');
+  if (cap < J.shapes.length){ note.hidden = false; note.textContent = 'The square holds the first ' + cap + ' of ' + J.shapes.length + ' terms; the rest are in the full formula below and in the LaTeX source.'; }
+  else note.hidden = true;
+}
+let retitleTimer = null;
+$('title').addEventListener('input', () => {              // a finished post takes a new title without repainting
+  if (!job || job.running || !job.post) return;
+  clearTimeout(retitleTimer);
+  retitleTimer = setTimeout(async () => {
+    const J = job, L = await layoutPost(J, J.post.L.picH);
+    L.W = J.post.W; L.Hh = J.post.H; J.post.L = L;
+    await showPost(J); writeFormula(J, J.post.W, J.post.H);
+  }, 500);
+});
 
 /* ---------------- formula text ---------------- */
 const gcd = (a, b) => { a = Math.abs(a); b = Math.abs(b); while (b){ [a, b] = [b, a % b]; } return a; };
@@ -655,7 +679,7 @@ function formulaParts(J, W, Hh){
   ];
   const q40 = c => quad(Math.round(c[0]*40), Math.round(c[1]*40), Math.round(c[2]*40), 40);
   const lines = J.shapes.map((sh, j) => ({sh, j: j + 1, cols: [0, 1, 2].map(f => q40([sh.col[0][f], sh.col[1][f], sh.col[2][f]]))}));
-  return {N, eqs, lines, title: srcName + ' in ' + N + ' Ellipses',
+  return {N, eqs, lines, title: postTitle() + ' in ' + N + ' Ellipses',
     intro: 'This image shows ' + N + ' soft ellipses laid over a linear gradient. For m = 1, 2, 3, …, ' + W + ' and n = 1, 2, 3, …, ' + Hh +
            ', the color of the pixel of the row n and the column m is rgb(F(H₀(x, y)), F(H₁(x, y)), F(H₂(x, y))), where'};
 }
@@ -706,12 +730,12 @@ async function layoutPost(J, picH){
     g.font = fs + 'px ' + SERIF;
     const colW = Math.max(...texts.map(t => g.measureText(t).width)) + fs*1.6;
     const cols = Math.max(1, Math.floor((maxW + fs*1.6)/colW)), rows = Math.floor(avail/(fs*1.28));
-    if (cols*rows >= texts.length) return {W, Hh, parts, introLines, eqImgs, head, fs, cols, rows, colW, texts, fits: true, yConst: y, long};
+    if (cols*rows >= texts.length) return {W, Hh, parts, introLines, eqImgs, head, fs, cols, rows, colW, texts, fits: true, yConst: y, long, picH};
   }
   const fs = 6.5; g.font = fs + 'px ' + SERIF;
   const colW = Math.max(...texts.map(t => g.measureText(t).width)) + fs*1.6;
   const cols = Math.max(1, Math.floor((maxW + fs*1.6)/colW)), rows = Math.floor(avail/(fs*1.28));
-  return {W, Hh, parts, introLines, eqImgs, head, fs, cols, rows, colW, texts, fits: false, yConst: y, long};
+  return {W, Hh, parts, introLines, eqImgs, head, fs, cols, rows, colW, texts, fits: false, yConst: y, long, picH};
 }
 async function buildPost(J, pic){
   const cv = document.createElement('canvas'); cv.width = POST; cv.height = POST; const g = cv.getContext('2d');
