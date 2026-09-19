@@ -1,0 +1,601 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Paste an Equation</title>
+<meta name="description" content="Paste a formula, see the picture it paints, and change anything in it: works with Equation Painter formulas and with Hamid Naderi Yeganeh's own.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cellipse cx='12' cy='12' rx='10' ry='5' transform='rotate(-30 12 12)' fill='none' stroke='%230D1015' stroke-width='1.8'/%3E%3Cellipse cx='12' cy='12' rx='10' ry='5' transform='rotate(30 12 12)' fill='none' stroke='%232340EE' stroke-width='1.8'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&family=Geist:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=STIX+Two+Text:ital,wght@0,400;0,600;1,400&display=swap">
+<style>
+:root{
+  --ground:#E6E9ED; --raised:#FFFFFF; --ink:#0D1015; --muted:#58616D; --faint:#8A929D;
+  --line:#CBD1D8; --grid:rgba(13,16,21,.07); --code:#F4F6F9;
+  --accent:#2340EE; --accent-ink:#FFFFFF; --accent-soft:#DCE2FF; --bad:#C23A2B; --bad-soft:#FBE7E4;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#0B0D11; --raised:#181C23; --ink:#E8EBEF; --muted:#98A1AD; --faint:#667080;
+    --line:#252B35; --grid:rgba(232,235,239,.06); --code:#12151B;
+    --accent:#8397FF; --accent-ink:#0B0D11; --accent-soft:#1A2140; --bad:#FF7B6B; --bad-soft:#3A1916;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0B0D11; --raised:#181C23; --ink:#E8EBEF; --muted:#98A1AD; --faint:#667080;
+  --line:#252B35; --grid:rgba(232,235,239,.06); --code:#12151B;
+  --accent:#8397FF; --accent-ink:#0B0D11; --accent-soft:#1A2140; --bad:#FF7B6B; --bad-soft:#3A1916;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:Geist,system-ui,-apple-system,"Segoe UI",sans-serif;font-size:15px;line-height:1.55;
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:32px 32px}
+[hidden]{display:none!important}
+img{max-width:100%}
+.wrap{max-width:1320px;margin:0 auto;padding-inline:20px;padding-block:20px 64px;display:flex;flex-direction:column;gap:24px}
+.bar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:14px}
+.mark{font-family:"Bricolage Grotesque",Geist,sans-serif;font-weight:700;font-size:20px;letter-spacing:-.01em;display:flex;align-items:center;gap:10px;color:var(--ink);text-decoration:none}
+.mark svg{width:22px;height:22px}
+nav{display:flex;gap:6px;background:var(--raised);border:1px solid var(--line);border-radius:10px;padding:3px}
+nav a{padding:6px 12px;border-radius:8px;color:var(--muted);text-decoration:none;font-size:14px}
+nav a[aria-current]{background:var(--ink);color:var(--ground)}
+nav a:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+h1{font-family:"Bricolage Grotesque",Geist,sans-serif;font-weight:750;font-variation-settings:"wdth" 85;font-size:clamp(32px,4.4vw,52px);line-height:1;letter-spacing:-.025em;margin:4px 0 8px;text-wrap:balance}
+h1 em{font-style:normal;color:var(--accent)}
+.lede{color:var(--muted);margin:0;max-width:70ch}
+.presets{display:flex;flex-wrap:wrap;gap:8px}
+.presets button{display:flex;flex-direction:column;align-items:flex-start;gap:0;text-align:left}
+.presets button small{color:var(--muted);font-size:11.5px;font-family:"JetBrains Mono",monospace}
+button{font:inherit;cursor:pointer;border-radius:10px;padding:9px 14px;border:1px solid var(--line);background:var(--raised);color:var(--ink)}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+button:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button:disabled{opacity:.5;cursor:default}
+select{font:inherit;padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:var(--raised);color:var(--ink)}
+.work{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:20px;align-items:start}
+@media (max-width:980px){.work{grid-template-columns:1fr}}
+.panel{background:var(--raised);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.panel-h{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+textarea#src{width:100%;min-height:560px;resize:vertical;font-family:"JetBrains Mono",ui-monospace,Consolas,monospace;font-size:12.5px;line-height:1.55;tab-size:2;
+  background:var(--code);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:12px;white-space:pre;overflow:auto}
+.hint{font-size:12.5px;color:var(--muted)}
+.hint kbd{font-family:"JetBrains Mono",monospace;font-size:11px;border:1px solid var(--line);border-radius:4px;padding:0 4px;background:var(--code)}
+canvas#out{display:block;width:100%;height:auto;border-radius:6px;background:#fff}
+.status{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);font-family:"JetBrains Mono",monospace}
+.track{height:3px;background:var(--line);border-radius:2px;overflow:hidden}
+.fill{height:100%;width:0;background:var(--accent)}
+.err{background:var(--bad-soft);color:var(--bad);border-radius:10px;padding:10px 12px;font-family:"JetBrains Mono",monospace;font-size:12.5px;white-space:pre-wrap}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.ref{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+@media (max-width:900px){.ref{grid-template-columns:1fr}}
+.ref section{background:var(--raised);padding:16px 18px;min-width:0}
+.ref h3{margin:0 0 6px;font-family:"Bricolage Grotesque",Geist,sans-serif;font-size:18px}
+.ref p{margin:0 0 8px;color:var(--muted);font-size:14px}
+.ref pre{margin:0;background:var(--code);border-radius:8px;padding:10px;font-size:12px;overflow-x:auto;font-family:"JetBrains Mono",monospace}
+a.btn{display:inline-flex;align-items:center;border-radius:10px;padding:9px 14px;border:1px solid var(--line);background:var(--raised);color:var(--ink);text-decoration:none}
+@media print{*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="bar">
+    <a class="mark" href="index.html">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="12" rx="10" ry="5" transform="rotate(-30 12 12)" fill="none" stroke="currentColor" stroke-width="1.6"/><ellipse cx="12" cy="12" rx="10" ry="5" transform="rotate(30 12 12)" fill="none" stroke="var(--accent)" stroke-width="1.6"/></svg>
+      Equation Painter
+    </a>
+    <nav aria-label="Pages"><a href="index.html">Paint a picture</a><a href="paste.html" aria-current="page">Paste an equation</a></nav>
+  </div>
+
+  <header>
+    <h1>Paste an equation, <em>change anything.</em></h1>
+    <p class="lede">Paste a formula copied from the painter, or open one of Hamid Naderi Yeganeh's, and the picture it paints appears beside it. Edit any number, any term, any function: the picture follows as you type.</p>
+  </header>
+
+  <div class="presets" id="presets" aria-label="Formulas to open"></div>
+
+  <div class="work">
+    <div class="panel">
+      <div class="panel-h"><span>The formula</span>
+        <span class="row"><button id="copy">Copy</button><button id="loadLast" hidden>My last painting</button></span></div>
+      <textarea id="src" spellcheck="false" aria-label="Formula source"></textarea>
+      <div class="hint">The picture redraws half a second after you stop typing. Put the cursor on a number and press <kbd>Alt</kbd> + <kbd>↑</kbd> or <kbd>↓</kbd> to nudge it by its last digit.</div>
+    </div>
+    <div class="panel">
+      <div class="panel-h"><span>The picture</span>
+        <span class="row"><label for="res" class="hint" style="text-transform:none;letter-spacing:0">Preview</label>
+          <select id="res"><option value="360">360 px</option><option value="640" selected>640 px</option><option value="1000">1000 px</option><option value="0">Full size</option></select>
+          <button id="dl">Download PNG</button></span></div>
+      <canvas id="out" width="640" height="384" aria-label="The picture the formula paints"></canvas>
+      <div class="track"><div class="fill" id="fill"></div></div>
+      <div class="status"><span id="stat">ready</span><span id="time"></span></div>
+      <div class="err" id="err" hidden></div>
+    </div>
+  </div>
+
+  <div class="ref">
+    <section>
+      <h3>Pixel formulas</h3>
+      <p>Every pixel gets a colour from H, computed three times with v = 0, 1, 2 for red, green and blue; F clamps it to 0..255. Helpers are defined above H and can use x, y, v and each other.</p>
+      <pre>mode: pixel
+size: 1200 x 720
+x = (m - 600)/360
+y = (360 - n)/360
+A = exp(-exp(40*(x^2 + y^2 - 1/4)))
+H = (1 + v)/4*A + (1 - A)/10</pre>
+    </section>
+    <section>
+      <h3>Families of circles and lines</h3>
+      <p>For every k in a range, a circle with centre (A, B) and radius R, or a line segment from (X1, Y1) to (X2, Y2). Helpers may use k. <code>window: auto</code> frames the drawing.</p>
+      <pre>mode: circles
+size: 1200 x 900
+window: auto
+k = 1 .. 2000
+A = cos(2*pi*k/2000)
+B = sin(6*pi*k/2000)/2
+R = 1/20 + sin(pi*k/2000)^2/10</pre>
+    </section>
+    <section>
+      <h3>Painter layers</h3>
+      <p>The painter's own format: a background B, then one row per term, each painted over the last by M and C. The shape of M and C is yours to change; the rows are the constants.</p>
+      <pre>sum(s, 1, 40, expr)   prod(s, 1, 40, expr)
+abs sqrt exp ln sin cos tan arctan arcsin
+arccos floor sign min max pick(v, r, g, b)
+pi  e  ^  * /  + -   # comment</pre>
+    </section>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+const $ = id => document.getElementById(id);
+
+/* ============================ presets ============================ */
+const PRESETS = [
+{name: "Frog", by: "Yeganeh, 2026", text:
+`# Frog by Hamid Naderi Yeganeh (Instagram, 3 Sep 2026), transcribed from his post.
+mode: pixel
+size: 2150 x 1290
+x = (m - 1500)/516
+y = (321 - n)/516
+Q = x + y/2 - (y - x/2 + 7/10)^2/6 - abs(y - x/2 + 7/10)^(6/5)/6 + 12/5
+B = exp(-exp(100*abs(Q) - 23 - 10*(y - x/2 + 17/10)) - exp(10*(y - x/2 + 2*(x + y/2 + 9/4)^2 - 3/50)))
+# K: skin grain, a hundred thresholded cos^10 lattices turned by s^2
+K = sum(s, 1, 100, exp(-exp(-200*(cos((20 + s/5)*(x*cos(s^2) + y*sin(s^2)) + 10*sin(10*s))^10*cos((20 + s/5)*(x*sin(s^2) - y*cos(s^2)) + 10*sin(9*s))^10 - 1/2)))/100)
+g = y - x/10 + (x + y/8)^2/8
+p = x + y/8
+V = 1 - exp(-exp(60*abs(x + y/4 + 3/4)^(11/5) + 100*(y - x/4 + 9/10)^2 - 80) - exp(100*g))
+U = 1 - exp(-exp(100*(y - x/18 + p^2/8 - 3/2*(4 + (6*abs(x + y/8 + 3/2))^(14/5))^(-1) - (4 + abs(8*x + y + 56/10)^(14/5))^(-1) - 23/100*arctan(-3*p*(abs(p) + 10^(-5))^(-1/5)))) - exp(-100*(g - arctan(4*p*(abs(p) + 10^(-5))^(-1/5)))))
+A = U*V
+L = exp(-exp(-6/5*abs(x + y/4 + 11/20)^(11/5) - 11/5*(y - x/4 + 97/100)^2 + 7/5))
+# E: the out-of-focus background, forty soft discs placed by sin(s^2)
+E = sum(s, 1, 40, (3/25 + 9/100*cos((4 + 4*v)*s))*(3/5 + sin(5*s)/5 + sin(2*s)/5)*exp(-exp(-10*(sin(sin(2*s) + (3 + sin(s^2))*(x/2*sin(7*s) + (y - 8)/2*cos(7*s)))^10*sin(sin(3*s) + (3 + 2*sin(s^2))*((y - 8)/2*sin(7*s) - x/2*cos(7*s)))^10 - 1/10))))
+W = (-11*v^2 + 15*v + 16)/20*exp(-exp(-100*g)) + (20 - 7*v^2 + 5*v)/20*(1 + K)*exp(-exp(100*g))*(L + (6*v^2 - 7*v + 41)/20*exp(-exp(10*sqrt((x + y/4 + 11/20)^2 + (y - x/4 + 4/5)^2) - 1/10)))
+R = (5*v^2 - 11*v + 10)/20*(1 - L) + W
+H = (18 - 9*v + v^2)/40*E*A*(1 - B) + (20 - 7*v^2 + 5*v)/20*B*(1 + K)*(3/10 + 9/20*Q) + (1 - A)*(1 + K)*(1 - B)*exp(-exp(-(x + y/8 + 2)))*R - (-2 + 15*v - 5*v^2)/20*exp(-exp(200*(3/2*(x + y/4 + 36/25)^2 + 13/10*(y - x/4 - 9/20)^2 - 63/1000))) - exp(-exp(100*(2*(x + y/4 + 36/25)^2 + 4/5*abs(y - x/4 - 9/20) - 7/125))) + 6/5*exp(-exp(100*(140*(x - 2*(y - 1/10)^2 + 8/5)^2 + 100*(y - 1/10)^4 - 3/100)))
+`},
+{name: "A Bird in Flight", by: "Yeganeh, 40,001 circles", text:
+`# A Bird in Flight by Hamid Naderi Yeganeh: all circles (x - A(k))^2 + (y - B(k))^2 = R(k)^2, transcribed from his post.
+mode: circles
+size: 1200 x 1000
+window: auto
+width: 0.5
+alpha: 0.35
+k = -20000 .. 20000
+A = 3*k/45000 + sin(17*pi/20*(k/20000)^5)*cos(41*pi*k/20000)^6 + (1/3*cos(41*pi*k/20000)^16 + 1/3*cos(41*pi*k/20000)^80)*cos(pi*k/40000)^12*sin(6*pi*k/20000)
+B = 15/30*(k/20000)^4 - cos(17*pi/20*(k/20000)^5)*(11/10 + 45/20*cos(pi*k/40000)^8*cos(3*pi*k/40000)^6)*cos(41*pi*k/20000)^6 + 12/20*cos(3*pi*k/200000)^10*cos(9*pi*k/200000)^10*cos(18*pi*k/200000)^10
+R = 1/50 + 1/40*sin(41*pi*k/20000)^2*sin(9*pi*k/200000)^2 + 1/17*cos(41*pi*k/20000)^2*cos(pi*k/40000)^10
+`},
+{name: "Boat", by: "Yeganeh, 2,000 lines", text:
+`# Boat by Hamid Naderi Yeganeh: 2000 line segments, transcribed from his post.
+# He writes each endpoint as a complex number e^(i pi/4)(a + i b); here that is ((a - b)/sqrt(2), (a + b)/sqrt(2)).
+mode: segments
+size: 1200 x 1000
+window: auto
+width: 0.6
+alpha: 0.55
+k = 1 .. 2000
+a1 = cos(4*pi*k/2000 + pi/8)
+b1 = cos(8*pi*k/2000 + pi/4)
+a2 = sin(6*pi*k/2000 + 7*pi/8)
+b2 = sin(3*pi*k/2000 + 5*pi/3)
+X1 = (a1 - b1)/sqrt(2)
+Y1 = (a1 + b1)/sqrt(2)
+X2 = (a2 - b2)/sqrt(2)
+Y2 = (a2 + b2)/sqrt(2)
+`},
+{name: "1,000,000 Line Segments", by: "Yeganeh, geometry only", text:
+`# 1,000,000 Line Segments 1 by Hamid Naderi Yeganeh, transcribed from his post (2026).
+# His colours are not published, so this draws the geometry in one ink. Heavy: give it a few seconds.
+mode: segments
+size: 1200 x 1200
+window: auto
+width: 0.4
+alpha: 0.05
+k = 1 .. 1000000
+t = pi*k/1000000
+E = 7/10 + 4/10*cos(24*t)^2 + 4/10*cos(16*t)^2 - 6/10*cos(4*t)^2
+w = cos(34*t)*cos(48*t)^2/30
+X1 = cos(10*t)*E + cos(1700008*t)/5 - w*cos(34*t)
+Y1 = sin(10*t)*E + sin(1700008*t)/5 - w*sin(34*t)
+X2 = cos(10*t)*E + cos(1700008*t)/5 + w*cos(34*t)
+Y2 = sin(10*t)*E + sin(1700008*t)/5 + w*sin(34*t)
+`},
+{name: "A small example", by: "try editing it", text:
+`# A small pixel formula to play with: a sun over a sea. Change any number.
+mode: pixel
+size: 1200 x 720
+x = (m - 600)/360
+y = (360 - n)/360
+# the sun: a soft disc (the double exponential is Yeganeh's mask)
+S = exp(-exp(30*((x - 1/2)^2 + (y - 3/10)^2 - 1/25)))
+# the sea: everything below a wavy horizon
+D = exp(-exp(60*(y - sin(6*x)/40)))
+# glitter on the water: a thresholded product of two cosines
+G = exp(-exp(-40*(cos(40*x + 3*sin(9*y))^4*cos(90*y)^2 - 7/10)))*exp(-exp(12*(abs(x - 1/2) - 1/4 + y/2)))
+H = (1 - D)*((4 - v)/5 - y*(v + 1)/4 + S) + D*((1 + v)/8 + y/4 + 3/5*G)
+`}
+];
+
+/* ============================ the language ============================ */
+const FUNCS = {abs:"Math.abs", sqrt:"Math.sqrt", exp:"_exp", ln:"Math.log", log:"Math.log", sin:"Math.sin", cos:"Math.cos", tan:"Math.tan",
+  arctan:"Math.atan", atan:"Math.atan", arcsin:"Math.asin", arccos:"Math.acos", floor:"Math.floor", sign:"Math.sign", min:"Math.min", max:"Math.max",
+  sinh:"Math.sinh", cosh:"Math.cosh", tanh:"Math.tanh", pick:"_pick"};
+function tokenize(src, line){
+  const out = []; let i = 0;
+  while (i < src.length){
+    const c = src[i];
+    if (c === " " || c === "\t"){ i++; continue; }
+    if (/[0-9.]/.test(c) && !(c === "." && src[i+1] === ".")){
+      const m = /^(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?/.exec(src.slice(i)); if (!m) throw err(line, "cannot read a number here");
+      out.push({t:"num", v:m[0]}); i += m[0].length; continue;
+    }
+    if (/[A-Za-z_]/.test(c)){ const m = /^[A-Za-z_][A-Za-z0-9_]*/.exec(src.slice(i)); out.push({t:"id", v:m[0]}); i += m[0].length; continue; }
+    if ("+-*/^(),".includes(c)){ out.push({t:c}); i++; continue; }
+    if (c === "−"){ out.push({t:"-"}); i++; continue; }
+    if (c === "·" || c === "×"){ out.push({t:"*"}); i++; continue; }
+    throw err(line, "unexpected character '" + c + "'");
+  }
+  return out;
+}
+function err(line, msg){ const e = new Error(msg); e.line = line; return e; }
+
+// recursive descent to JS source; `scope` maps names to JS expressions
+function parseExpr(tokens, line, scope){
+  let i = 0;
+  const peek = () => tokens[i], eat = t => { if (!tokens[i] || tokens[i].t !== t) throw err(line, "expected '" + t + "'" + (tokens[i] ? " before '" + (tokens[i].v || tokens[i].t) + "'" : " at the end")); return tokens[i++]; };
+  function add(){ let a = mul(); while (peek() && (peek().t === "+" || peek().t === "-")){ const o = tokens[i++].t; a = "(" + a + o + mul() + ")"; } return a; }
+  function startsPrimary(t){ return t && (t.t === "num" || t.t === "id" || t.t === "("); }
+  function mul(){
+    let a = unary();
+    for (;;){
+      const t = peek();
+      if (t && (t.t === "*" || t.t === "/")){ i++; a = "(" + a + t.t + unary() + ")"; }
+      else if (startsPrimary(t)) a = "(" + a + "*" + pow() + ")";           // implicit product: 2x, 3(x+1), sin(x)cos(y)
+      else return a;
+    }
+  }
+  function unary(){ const t = peek(); if (t && t.t === "-"){ i++; return "(-" + unary() + ")"; } if (t && t.t === "+"){ i++; return unary(); } return pow(); }
+  function pow(){ const b = primary(); if (peek() && peek().t === "^"){ i++; return "_pow(" + b + "," + unary() + ")"; } return b; }
+  function primary(){
+    const t = tokens[i++]; if (!t) throw err(line, "the line ends too early");
+    if (t.t === "num") return "(" + t.v + ")";
+    if (t.t === "(") { const a = add(); eat(")"); return a; }
+    if (t.t === "id"){
+      const name = t.v;
+      if (name === "sum" || name === "prod"){
+        eat("("); const v = eat("id").v; eat(","); const lo = add(); eat(","); const hi = add(); eat(",");
+        const inner = Object.assign({}, scope, {[v]: "_i_" + v});
+        const body = parseSub(inner); eat(")");
+        return (name === "sum" ? "_sum(" : "_prod(") + lo + "," + hi + ",(_i_" + v + ")=>" + body + ")";
+      }
+      if (peek() && peek().t === "(" && (FUNCS[name] || (scope[name] && scope[name].fn))){
+        eat("("); const args = [];
+        if (peek() && peek().t !== ")"){ args.push(add()); while (peek() && peek().t === ","){ i++; args.push(add()); } }
+        eat(")");
+        if (FUNCS[name]) return FUNCS[name] + "(" + args.join(",") + ")";
+        return scope[name].js;                                             // helper written as A(x,y): the call reads the value
+      }
+      if (name === "pi") return "Math.PI";
+      if (name === "e" && !scope.e) return "Math.E";
+      if (scope[name] !== undefined) return typeof scope[name] === "string" ? scope[name] : scope[name].js;
+      throw err(line, "unknown name '" + name + "'");
+    }
+    throw err(line, "unexpected '" + t.t + "'");
+  }
+  function parseSub(sc){ const save = scope; scope = sc; const r = add(); scope = save; return r; }
+  const r = add();
+  if (i < tokens.length) throw err(line, "unexpected '" + (tokens[i].v || tokens[i].t) + "'");
+  return r;
+}
+const RT = `
+const _exp = v => Math.exp(v > 700 ? 700 : v);
+const _pow = (a, b) => (Number.isInteger(b) ? a**b : Math.pow(a, b));
+const _pick = (v, r, g, b) => (v < 0.5 ? r : v < 1.5 ? g : b);
+const _sum = (lo, hi, f) => { let a = 0; for (let k = lo; k <= hi; k++) a += f(k); return a; };
+const _prod = (lo, hi, f) => { let a = 1; for (let k = lo; k <= hi; k++) a *= f(k); return a; };
+`;
+
+/* parse the whole text into a program description */
+function parseProgram(text){
+  const P = {mode: "pixel", size: [1200, 720], window: "auto", width: 0.6, alpha: 0.5, color: "#111111", defs: [], terms: null, kRange: null, x: null, y: null};
+  const lines = text.split(/\r?\n/);
+  for (let li = 0; li < lines.length; li++){
+    const ln = li + 1; let raw = lines[li].replace(/#.*$/, "").trim(); if (!raw) continue;
+    let m;
+    if ((m = /^mode\s*:\s*(\w+)$/i.exec(raw))){ P.mode = m[1].toLowerCase(); if (!["pixel","circles","segments","layers"].includes(P.mode)) throw err(ln, "mode must be pixel, circles, segments or layers"); continue; }
+    if ((m = /^size\s*:\s*(\d+)\s*[x×*]\s*(\d+)$/i.exec(raw))){ P.size = [+m[1], +m[2]]; continue; }
+    if ((m = /^window\s*:\s*(.+)$/i.exec(raw))){ const v = m[1].trim(); if (v === "auto") P.window = "auto"; else { const a = v.split(/[\s,]+/).map(Number); if (a.length !== 4 || a.some(isNaN)) throw err(ln, "window needs xmin xmax ymin ymax, or auto"); P.window = a; } continue; }
+    if ((m = /^(width|alpha)\s*:\s*([\d.]+)$/i.exec(raw))){ P[m[1].toLowerCase()] = +m[2]; continue; }
+    if ((m = /^color\s*:\s*(#[0-9a-f]{6})$/i.exec(raw))){ P.color = m[1]; continue; }
+    if ((m = /^k\s*=\s*(.+?)\s*\.\.\s*(.+)$/.exec(raw))){ P.kRange = [m[1], m[2], ln]; continue; }
+    if ((m = /^terms\s*:\s*(.+)$/i.exec(raw))){
+      const cols = m[1].trim().split(/\s+/); const rows = [];
+      for (li++; li < lines.length; li++){
+        const r = lines[li].replace(/#.*$/, "").trim(); if (!r) continue;
+        const vals = r.replace(/^\d+\s*:\s*/, "").split(/[\s,;]+/).filter(Boolean).map(Number);
+        if (vals.length !== cols.length || vals.some(isNaN)) throw err(li + 1, "a term row needs " + cols.length + " numbers (" + cols.join(" ") + ")");
+        rows.push(vals);
+      }
+      P.terms = {cols, rows}; break;
+    }
+    if ((m = /^([A-Za-z_][A-Za-z0-9_]*)\s*(\(([^)]*)\))?\s*=\s*(.+)$/.exec(raw))){
+      const name = m[1], args = m[3] ? m[3].split(",").map(s => s.trim()).filter(Boolean) : [], body = m[4];
+      if (name === "x" || name === "y"){ P[name] = {src: body, line: ln}; continue; }
+      P.defs.push({name, args, body, line: ln}); continue;
+    }
+    throw err(ln, "cannot read this line; expected 'name = formula' or a setting like 'mode: pixel'");
+  }
+  return P;
+}
+
+/* compile a list of helper definitions into JS 'const' lines, in order */
+function compileDefs(defs, baseScope, needName){
+  const scope = Object.assign({}, baseScope); const code = []; const vDep = {};
+  for (const d of defs){
+    const extra = d.args.filter(a => !["x","y","v","k","m","n"].includes(a));
+    if (extra.length){                                                   // a real function of its own arguments, like F(t)
+      const inner = Object.assign({}, scope); extra.forEach(a => inner[a] = "_a_" + a);
+      const body = parseExpr(tokenize(d.body, d.line), d.line, inner);
+      const fname = "_f_" + d.name;
+      code.push("const " + fname + " = (" + extra.map(a => "_a_" + a).join(",") + ") => " + body + ";");
+      scope[d.name] = {fn: true, js: null, call: fname};
+      FUNCS[d.name] = fname;
+      continue;
+    }
+    const js = parseExpr(tokenize(d.body, d.line), d.line, scope);
+    const vn = "_u_" + d.name;
+    code.push("const " + vn + " = " + js + ";");
+    scope[d.name] = {fn: true, js: vn};
+  }
+  if (needName && !scope[needName]) throw err(0, "the formula needs a line '" + needName + " = ...'");
+  return {code, scope};
+}
+
+/* ============================ renderers ============================ */
+let token = 0;
+const out = $('out');
+function setStatus(s, t){ $('stat').textContent = s; if (t !== undefined) $('time').textContent = t; }
+function progress(f){ $('fill').style.width = (100*f).toFixed(1) + '%'; }
+function showErr(e){ const box = $('err'); if (!e){ box.hidden = true; return; } box.hidden = false; box.textContent = (e.line ? "Line " + e.line + ": " : "") + e.message; }
+function viewSize(P){
+  const r = +$('res').value, [W, H] = P.size;
+  if (!r || r >= W) return [W, H];
+  return [r, Math.max(1, Math.round(r*H/W))];
+}
+
+function renderPixel(P, my){
+  const [W, H] = P.size, [w, h] = viewSize(P);
+  if (!P.x || !P.y) throw err(0, "a pixel formula needs 'x = ...' and 'y = ...' in terms of m and n");
+  const base = {m: "_m", n: "_n"};
+  const xs = parseExpr(tokenize(P.x.src, P.x.line), P.x.line, base), ys = parseExpr(tokenize(P.y.src, P.y.line), P.y.line, base);
+  // split the helpers: those that do not use v are computed once per pixel
+  const usesV = new Set(); const all = P.defs;
+  for (const d of all){ const toks = tokenize(d.body, d.line); if (toks.some(t => t.t === "id" && (t.v === "v" || usesV.has(t.v)))) usesV.add(d.name); }
+  const pre = all.filter(d => !usesV.has(d.name)), per = all.filter(d => usesV.has(d.name));
+  const s1 = {x: "x", y: "y", m: "_m", n: "_n"};
+  const A = compileDefs(pre, s1);
+  const s2 = Object.assign({}, A.scope, {v: "v"});
+  const B = compileDefs(per, s2, "H");
+  const Hjs = B.scope.H ? B.scope.H.js : (A.scope.H ? A.scope.H.js : null);
+  if (!Hjs) throw err(0, "the formula needs a line 'H = ...' (the colour, using v = 0, 1, 2)");
+  const body = RT + `
+return function(j0, j1, w, h, W, H, data){
+  for (let j = j0; j < j1; j++){
+    const _n = 1 + Math.floor((j + 0.5)*H/h);
+    for (let i = 0; i < w; i++){
+      const _m = 1 + Math.floor((i + 0.5)*W/w);
+      const x = ${xs}, y = ${ys};
+      ${A.code.join("\n      ")}
+      const o = (j*w + i)*4;
+      for (let v = 0; v < 3; v++){
+        ${B.code.join("\n        ")}
+        let t = ${Hjs};
+        data[o + v] = t > 0 ? (t < 1 ? Math.floor(255*t) : 255) : 0;
+      }
+      data[o + 3] = 255;
+    }
+  }
+};`;
+  const fn = new Function(body)();
+  out.width = w; out.height = h;
+  const g = out.getContext('2d'), img = g.createImageData(w, h);
+  let j = 0; const t0 = performance.now();
+  (function chunk(){
+    if (my !== token) return;
+    const end = performance.now() + 30;
+    while (j < h && performance.now() < end){ const j1 = Math.min(h, j + 4); fn(j, j1, w, h, W, H, img.data); j = j1; }
+    g.putImageData(img, 0, 0); progress(j/h);
+    setStatus('pixel formula, ' + w + ' x ' + h + (w !== W ? ' (preview of ' + W + ' x ' + H + ')' : ''), ((performance.now() - t0)/1000).toFixed(1) + ' s');
+    if (j < h) setTimeout(chunk, 0);
+  })();
+}
+
+function familyFns(P, names){
+  if (!P.kRange) throw err(0, "a family needs a line 'k = first .. last'");
+  const lo = Function('"use strict";' + RT + "return " + parseExpr(tokenize(P.kRange[0], P.kRange[2]), P.kRange[2], {}))();
+  const hi = Function('"use strict";' + RT + "return " + parseExpr(tokenize(P.kRange[1], P.kRange[2]), P.kRange[2], {}))();
+  const D = compileDefs(P.defs, {k: "k"});
+  for (const nm of names) if (!D.scope[nm]) throw err(0, "this mode needs a line '" + nm + " = ...' in terms of k");
+  const fn = new Function(RT + "return function(k, o){ " + D.code.join(" ") + " " + names.map((nm, i) => "o[" + i + "] = " + D.scope[nm].js + ";").join(" ") + " };")();
+  return {lo: Math.ceil(lo), hi: Math.floor(hi), fn};
+}
+function renderFamily(P, my){
+  const names = P.mode === "circles" ? ["A", "B", "R"] : ["X1", "Y1", "X2", "Y2"];
+  const {lo, hi, fn} = familyFns(P, names);
+  const n = hi - lo + 1; if (n <= 0) throw err(P.kRange[2], "the range of k is empty");
+  const vals = new Float64Array(n*names.length), o = new Float64Array(names.length);
+  for (let k = lo, q = 0; k <= hi; k++, q++){ fn(k, o); for (let c = 0; c < names.length; c++) vals[q*names.length + c] = o[c]; }
+  let [x0, x1, y0, y1] = P.window === "auto" ? [Infinity, -Infinity, Infinity, -Infinity] : P.window;
+  if (P.window === "auto"){
+    for (let q = 0; q < n; q++){
+      const b = q*names.length;
+      if (P.mode === "circles"){ const r = Math.abs(vals[b+2]); x0 = Math.min(x0, vals[b] - r); x1 = Math.max(x1, vals[b] + r); y0 = Math.min(y0, vals[b+1] - r); y1 = Math.max(y1, vals[b+1] + r); }
+      else { x0 = Math.min(x0, vals[b], vals[b+2]); x1 = Math.max(x1, vals[b], vals[b+2]); y0 = Math.min(y0, vals[b+1], vals[b+3]); y1 = Math.max(y1, vals[b+1], vals[b+3]); }
+    }
+    if (!isFinite(x0)) throw err(0, "the family produced no finite points");
+  }
+  const [w, h] = viewSize(P); out.width = w; out.height = h;
+  const pad = 0.05, sx = w*(1 - 2*pad)/(x1 - x0 || 1), sy = h*(1 - 2*pad)/(y1 - y0 || 1), s = Math.min(sx, sy);
+  const cx = w/2 - s*(x0 + x1)/2, cy = h/2 + s*(y0 + y1)/2;
+  const g = out.getContext('2d'); g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h);
+  g.strokeStyle = P.color; g.globalAlpha = P.alpha; g.lineWidth = P.width*(w/1200 + 0.3);
+  let q = 0; const t0 = performance.now(), per = P.mode === "circles" ? 2000 : 20000;
+  (function chunk(){
+    if (my !== token) return;
+    const end = Math.min(n, q + per); g.beginPath();
+    for (; q < end; q++){
+      const b = q*names.length;
+      if (P.mode === "circles"){ const X = cx + s*vals[b], Y = cy - s*vals[b+1], R = s*Math.abs(vals[b+2]); g.moveTo(X + R, Y); g.arc(X, Y, R, 0, 2*Math.PI); }
+      else { g.moveTo(cx + s*vals[b], cy - s*vals[b+1]); g.lineTo(cx + s*vals[b+2], cy - s*vals[b+3]); }
+    }
+    g.stroke(); progress(q/n);
+    setStatus(n.toLocaleString() + (P.mode === "circles" ? ' circles' : ' line segments') + ', ' + w + ' x ' + h, ((performance.now() - t0)/1000).toFixed(1) + ' s');
+    if (q < n) setTimeout(chunk, 0); else g.globalAlpha = 1;
+  })();
+}
+
+function renderLayers(P, my){
+  if (!P.terms) throw err(0, "a layers formula needs a 'terms:' table at the end");
+  if (!P.x || !P.y) throw err(0, "a layers formula needs 'x = ...' and 'y = ...' in terms of m and n");
+  const [W, H] = P.size, [w, h] = viewSize(P), cols = P.terms.cols;
+  const base = {m: "_m", n: "_n"};
+  const xs = parseExpr(tokenize(P.x.src, P.x.line), P.x.line, base), ys = parseExpr(tokenize(P.y.src, P.y.line), P.y.line, base);
+  const bgDef = P.defs.find(d => d.name === "B"); if (!bgDef) throw err(0, "a layers formula needs a background line 'B = ...'");
+  const Bjs = parseExpr(tokenize(bgDef.body, bgDef.line), bgDef.line, {x: "x", y: "y", v: "v"});
+  const termDefs = P.defs.filter(d => d.name !== "B" && d.name !== "reach");
+  const colScope = {x: "x", y: "y"}; cols.forEach((c, i) => colScope[c] = "_c[" + i + "]");
+  const usesV = new Set();
+  for (const d of termDefs){ const toks = tokenize(d.body, d.line); if (toks.some(t => t.t === "id" && (t.v === "v" || usesV.has(t.v)))) usesV.add(d.name); }
+  const A = compileDefs(termDefs.filter(d => !usesV.has(d.name)), colScope);
+  if (!A.scope.M) throw err(0, "a layers formula needs the mask of one term, 'M = ...'");
+  const Bc = compileDefs(termDefs.filter(d => usesV.has(d.name)), Object.assign({}, A.scope, {v: "v"}), "C");
+  const reachDef = P.defs.find(d => d.name === "reach");
+  const reachFn = reachDef ? new Function(RT + "return function(_c){ return " + parseExpr(tokenize(reachDef.body, reachDef.line), reachDef.line, colScope) + "; };")() : null;
+  const fn = new Function(RT + `
+return function(_c, C, X, Y, w, i0, i1, j0, j1){
+  for (let j = j0; j <= j1; j++){ const y = Y[j];
+    for (let i = i0; i <= i1; i++){ const x = X[i];
+      ${A.code.join("\n      ")}
+      const _M = ${A.scope.M.js}; if (!(_M > 1e-9)) continue;
+      const o = (j*w + i)*3;
+      for (let v = 0; v < 3; v++){ ${Bc.code.join(" ")} C[o + v] = C[o + v]*(1 - _M) + _M*(${Bc.scope.C.js}); }
+    }
+  }
+};`)();
+  const bgfn = new Function(RT + "return function(x, y, v){ return " + Bjs + "; };")();
+  const xyfn = new Function(RT + "return function(_m, _n){ return [" + xs + "," + ys + "]; };")();
+  const X = new Float64Array(w), Y = new Float64Array(h);
+  for (let i = 0; i < w; i++) X[i] = xyfn(1 + Math.floor((i + 0.5)*W/w), 1)[0];
+  for (let j = 0; j < h; j++) Y[j] = xyfn(1, 1 + Math.floor((j + 0.5)*H/h))[1];
+  const C = new Float64Array(w*h*3);
+  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) for (let v = 0; v < 3; v++) C[(j*w + i)*3 + v] = bgfn(X[i], Y[j], v);
+  // pixel window of a term from its reach, if the formula gives one (x and y are linear in m and n)
+  const dx = X[1] - X[0], dy = Y[1] - Y[0];
+  const ia = cols.indexOf("a"), ib = cols.indexOf("b");
+  out.width = w; out.height = h;
+  const g = out.getContext('2d'), img = g.createImageData(w, h);
+  const rows = P.terms.rows; let r = 0; const t0 = performance.now();
+  const draw = () => { const d = img.data; for (let p = 0, q = 0; p < w*h; p++, q += 3){ for (let v = 0; v < 3; v++){ const t = C[q + v]; d[p*4 + v] = t > 0 ? (t < 1 ? Math.floor(255*t) : 255) : 0; } d[p*4 + 3] = 255; } g.putImageData(img, 0, 0); };
+  (function chunk(){
+    if (my !== token) return;
+    const end = performance.now() + 40;
+    for (; r < rows.length && performance.now() < end; r++){
+      const c = rows[r]; let i0 = 0, i1 = w - 1, j0 = 0, j1 = h - 1;
+      if (reachFn && ia >= 0 && ib >= 0){
+        const R = reachFn(c);
+        i0 = Math.max(0, Math.floor((c[ia] - R - X[0])/dx)); i1 = Math.min(w - 1, Math.ceil((c[ia] + R - X[0])/dx));
+        j0 = Math.max(0, Math.floor((c[ib] + R - Y[0])/dy)); j1 = Math.min(h - 1, Math.ceil((c[ib] - R - Y[0])/dy));
+        if (i1 < i0 || j1 < j0) continue;
+      }
+      fn(c, C, X, Y, w, i0, i1, j0, j1);
+    }
+    draw(); progress(r/rows.length);
+    setStatus(rows.length.toLocaleString() + ' terms, ' + w + ' x ' + h + (w !== W ? ' (preview of ' + W + ' x ' + H + ')' : ''), ((performance.now() - t0)/1000).toFixed(1) + ' s');
+    if (r < rows.length) setTimeout(chunk, 0);
+  })();
+}
+
+function run(){
+  const my = ++token; progress(0);
+  const text = $('src').value;
+  try {
+    for (const k of Object.keys(FUNCS)) if (FUNCS[k].startsWith("_f_")) delete FUNCS[k];
+    const P = parseProgram(text); showErr(null);
+    if (P.mode === "pixel") renderPixel(P, my);
+    else if (P.mode === "layers") renderLayers(P, my);
+    else renderFamily(P, my);
+  } catch(e){ showErr(e); setStatus('not drawn', ''); }
+}
+
+/* ============================ editing ============================ */
+let timer = null;
+$('src').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(run, 500); try { localStorage.setItem('ep:paste', $('src').value); } catch(e){} });
+$('res').addEventListener('change', run);
+$('src').addEventListener('keydown', e => {                    // Alt + arrow nudges the number under the cursor by its last digit
+  if (!e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+  const ta = e.target, s = ta.value, pos = ta.selectionStart;
+  const re = /-?\d+\.?\d*(?:[eE][+-]?\d+)?/g; let m;
+  while ((m = re.exec(s))){
+    if (pos >= m.index && pos <= m.index + m[0].length){
+      e.preventDefault();
+      const str = m[0], dec = (str.split('.')[1] || '').replace(/[eE].*/, '').length, step = Math.pow(10, -dec)*(e.key === 'ArrowUp' ? 1 : -1);
+      const nv = (parseFloat(str) + step).toFixed(dec);
+      ta.value = s.slice(0, m.index) + nv + s.slice(m.index + str.length);
+      ta.selectionStart = ta.selectionEnd = m.index + nv.length;
+      ta.dispatchEvent(new Event('input'));
+      return;
+    }
+  }
+});
+$('copy').addEventListener('click', async () => {
+  const b = $('copy');
+  try { await navigator.clipboard.writeText($('src').value); b.textContent = 'Copied'; } catch(e){ $('src').select(); b.textContent = 'Select and copy'; }
+  setTimeout(() => b.textContent = 'Copy', 2000);
+});
+$('dl').addEventListener('click', () => {
+  out.toBlob(bl => { const a = document.createElement('a'); a.href = URL.createObjectURL(bl); a.download = 'equation.png'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); });
+});
+
+const box = $('presets');
+PRESETS.forEach(p => {
+  const b = document.createElement('button'); b.innerHTML = '<span>' + p.name + '</span><small>' + p.by + '</small>';
+  b.addEventListener('click', () => { $('src').value = p.text; run(); });
+  box.appendChild(b);
+});
+let last = null; try { last = localStorage.getItem('ep:last'); } catch(e){}
+if (last){ $('loadLast').hidden = false; $('loadLast').addEventListener('click', () => { $('src').value = last; run(); }); }
+
+/* open in a working state: the formula passed from the painter, else the last one here, else his bird */
+let start = null;
+if (new URLSearchParams(location.search).get('from') === 'last' && last) start = last;
+if (!start){ try { start = localStorage.getItem('ep:paste'); } catch(e){} }
+$('src').value = start || PRESETS[1].text;
+run();
+})();
+</script>
+</body>
+</html>

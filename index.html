@@ -50,6 +50,13 @@ body{background:var(--ground);color:var(--ink);font-family:Geist,system-ui,-appl
 .bar small{color:var(--muted);font-size:13px}
 .bar small i{font-family:"STIX Two Text",Georgia,serif;font-size:15px}
 
+nav{display:flex;gap:6px;background:var(--raised);border:1px solid var(--line);border-radius:10px;padding:3px}
+nav a{padding:6px 12px;border-radius:8px;color:var(--muted);text-decoration:none;font-size:14px}
+nav a[aria-current]{background:var(--ink);color:var(--ground)}
+nav a:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.bar{align-items:center}
+.vidrow{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.vidrow video{max-width:260px;border-radius:6px;border:1px solid var(--line)}
 /* hero */
 .hero{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:28px;align-items:start}
 @media (max-width:900px){.hero{grid-template-columns:1fr}}
@@ -182,7 +189,7 @@ html{-webkit-text-size-adjust:100%}body{margin:0}img{max-width:100%}[hidden]{dis
       <svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="12" rx="10" ry="5" transform="rotate(-30 12 12)" fill="none" stroke="currentColor" stroke-width="1.6"/><ellipse cx="12" cy="12" rx="10" ry="5" transform="rotate(30 12 12)" fill="none" stroke="var(--accent)" stroke-width="1.6"/></svg>
       Equation Painter
     </div>
-    <small>A study in the method of Hamid Naderi Yeganeh, built on <i>e<sup>−e<sup>z</sup></sup></i></small>
+    <nav aria-label="Pages"><a href="index.html" aria-current="page">Paint a picture</a><a href="paste.html">Paste an equation</a></nav>
   </div>
 
   <section class="hero">
@@ -209,11 +216,15 @@ html{-webkit-text-size-adjust:100%}body{margin:0}img{max-width:100%}[hidden]{dis
           <img id="thumb" alt="">
           <div><strong id="fileName">Sample: sunset and sailboat</strong><span>Click to choose, or drop an image here. One subject on a plain background works best.</span></div>
         </label>
-        <div class="titlerow"><label for="title">Title on the post</label><input id="title" type="text" maxlength="60" value="Sunset" placeholder="Picture" autocomplete="off"></div>
       </div>
 
       <div class="step">
-        <div class="step-h"><span class="mono">02</span>Detail and time</div>
+        <div class="step-h"><span class="mono">02</span>Title</div>
+        <div class="titlerow"><input id="title" type="text" maxlength="60" value="Sunset" placeholder="What the picture shows, e.g. Portrait" autocomplete="off" aria-label="Title on the post"></div>
+      </div>
+
+      <div class="step">
+        <div class="step-h"><span class="mono">03</span>Detail and time</div>
         <div class="levels" id="levels" role="radiogroup" aria-label="Detail level"></div>
         <div class="custom" id="custom" hidden>
           <div class="slider" style="grid-column:1/-1"><div class="top"><label for="minutes">Time budget</label><output id="minutesOut">5 min</output></div><input type="range" id="minutes" min="1" max="60" step="1" value="5"></div>
@@ -238,8 +249,9 @@ html{-webkit-text-size-adjust:100%}body{margin:0}img{max-width:100%}[hidden]{dis
   <section id="result" hidden style="display:flex;flex-direction:column;gap:18px">
     <div class="sec-h">
       <div><h2>The post</h2><p>A 1440 by 1440 square laid out like Yeganeh's own: the picture on top, computed again at full size from the rounded numbers, and the formula that draws it underneath.</p></div>
-      <div class="tools"><a class="btn primary" id="dl" download="equation.png" href="#">Download PNG</a><button id="copyTex">Copy as LaTeX</button></div>
+      <div class="tools"><a class="btn primary" id="dl" download="equation.png" href="#">Download PNG</a><button id="makeVid">Make the video</button><button id="copyText">Copy formula</button><a class="btn" id="openPaste" href="paste.html?from=last">Open in Paste an equation</a><button id="copyTex">Copy as LaTeX</button></div>
     </div>
+    <div class="vidrow" id="vidrow" hidden><video id="vid" controls muted playsinline></video><a class="btn primary" id="vidDl" href="#">Download video</a><span class="note" id="vidNote"></span></div>
     <img class="post" id="postImg" alt="Square post: the picture computed from the equation, with the equation below it">
     <p class="post-note" id="postNote" hidden></p>
     <textarea id="latexOut" readonly hidden aria-label="LaTeX source"></textarea>
@@ -621,7 +633,8 @@ async function renderFinal(J){
     const live = $('cvLive'); live.width = O.w; live.height = O.h; live.getContext('2d').drawImage(pc, 0, 0);
     J.post = {pc, L, picH: L.picH, W: O.w, H: O.h};
     showPost(J).then(() => {
-      writeFormula(J, O.w, O.h);
+      writeFormula(J, O.w, O.h); storeText(J);
+      $('vidrow').hidden = true; $('makeVid').textContent = 'Make the video';
       $('result').hidden = false;
       $('run').disabled = false; $('run').textContent = 'Paint the equation';
       locks().forEach(el => el.disabled = false); refreshLevelUI();
@@ -638,6 +651,74 @@ async function showPost(J){
   if (cap < J.shapes.length){ note.hidden = false; note.textContent = 'The square holds the first ' + cap + ' of ' + J.shapes.length + ' terms; the rest are in the full formula below and in the LaTeX source.'; }
   else note.hidden = true;
 }
+function formulaText(J, W, Hh){
+  const half = Math.max(W, Hh)/2, f = v => String(Number(v.toFixed(4)));
+  const pk = k => 'pick(v, ' + [0, 1, 2].map(c => f(J.bg[c][k]/80)).join(', ') + ')';
+  const lines = [
+    '# ' + postTitle() + ' in ' + J.shapes.length + ' Ellipses, painted by Equation Painter (murtadha203.github.io/equation-painter)',
+    '# Each pixel (m, n) gets colour F(H) for v = 0, 1, 2 (red, green, blue). Each term paints its colour C over what is',
+    '# below it wherever its mask M is 1, in the order of the table. Change any line or any number and see what happens.',
+    'mode: layers',
+    'size: ' + W + ' x ' + Hh,
+    'x = (m - ' + W/2 + ')/' + half,
+    'y = (' + Hh/2 + ' - n)/' + half,
+    'B = ' + pk(0) + ' + ' + pk(1) + '*x + ' + pk(2) + '*y',
+    'V = (y - b)*cos(t) - (x - a)*sin(t)',
+    'U = ((x - a)*cos(t) + (y - b)*sin(t) + beta*V^2)/p',
+    'W = V/q',
+    'M = exp(-exp(k*(U^2 + W^2 - 1)))',
+    'C = pick(v, ar, ag, ab) + pick(v, gr, gg, gb)*U + pick(v, dr, dg, db)*W',
+    'reach = sqrt(1 + 5/k)*max(p, q) + abs(beta)*q^2*(1 + 5/k)',
+    'terms: a b t p q beta k ar ag ab gr gg gb dr dg db'];
+  J.shapes.forEach(sh => lines.push([sh.a, sh.b, sh.t, sh.p, sh.q, sh.bend, sh.k].map(f).join(' ') + '  ' +
+    [0, 1, 2].map(ff => [0, 1, 2].map(c => f(sh.col[c][ff])).join(' ')).join('  ')));
+  return lines.join('\n') + '\n';
+}
+function storeText(J){
+  const t = formulaText(J, J.post.W, J.post.H); J.text = t;
+  try { localStorage.setItem('ep:last', t); } catch(e){}
+}
+$('copyText').addEventListener('click', async () => {
+  const b = $('copyText'); if (!job || !job.text) return;
+  try { await navigator.clipboard.writeText(job.text); b.textContent = 'Copied'; }
+  catch(e){ const t = $('latexOut'); t.hidden = false; t.value = job.text; t.focus(); t.select(); b.textContent = 'Select the text below and copy'; }
+  setTimeout(() => { b.textContent = 'Copy formula'; }, 2500);
+});
+
+/* ---- the video: the square post, with the picture forming term by term, fast then faster */
+async function makeVideo(J){
+  const b = $('makeVid'); b.disabled = true;
+  const S = 1080, sc = S/1440, L = J.post.L, fps = 30, grow = 8*fps, hold = 2*fps, N = J.shapes.length;
+  const cv = document.createElement('canvas'); cv.width = S; cv.height = S; const g = cv.getContext('2d');
+  const post = $('postImg');
+  const O = surface(J, Math.round(Math.max(J.post.W, J.post.H)*sc));
+  const oc = document.createElement('canvas');
+  const rx = Math.round((1440 - J.post.W)/2*sc), rw = Math.round(J.post.W*sc), rh = Math.round(J.post.H*sc);
+  const types = ['video/mp4;codecs=avc1.42E01E', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm'];
+  const type = types.find(t => window.MediaRecorder && MediaRecorder.isTypeSupported(t));
+  if (!type){ $('vidNote').textContent = 'This browser cannot record video.'; $('vidrow').hidden = false; b.disabled = false; return; }
+  const stream = cv.captureStream(fps), rec = new MediaRecorder(stream, {mimeType: type, videoBitsPerSecond: 10e6}), chunks = [];
+  rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+  const done = new Promise(r => rec.onstop = r);
+  const frame = () => { g.drawImage(post, 0, 0, S, S); drawFast(oc, O); g.drawImage(oc, rx, 0, rw, rh); };
+  let painted = 0; frame(); rec.start();
+  const t0 = performance.now();
+  for (let f = 1; f <= grow + hold; f++){
+    const upto = f >= grow ? N : Math.round(N*(Math.exp(3*f/grow) - 1)/(Math.exp(3) - 1));
+    for (; painted < upto; painted++) paintTerm(O, J.shapes[painted]);
+    frame();
+    b.textContent = 'Recording ' + Math.ceil((grow + hold - f)/fps) + ' s';
+    const wait = t0 + f*1000/fps - performance.now(); await new Promise(r => setTimeout(r, Math.max(0, wait)));
+  }
+  rec.stop(); await done;
+  const blob = new Blob(chunks, {type: type.split(';')[0]}), url = URL.createObjectURL(blob);
+  const ext = type.startsWith('video/mp4') ? 'mp4' : 'webm';
+  $('vid').src = url; $('vidDl').href = url; $('vidDl').download = postTitle().replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-').toLowerCase() + '-equation.' + ext;
+  $('vidNote').textContent = ((grow + hold)/fps) + ' s, 1080 x 1080, ' + ext.toUpperCase() + (ext === 'webm' ? ' (this browser cannot record MP4; Chrome or Edge can)' : '');
+  $('vidrow').hidden = false; b.disabled = false; b.textContent = 'Make the video again';
+}
+$('makeVid').addEventListener('click', () => { if (job && job.post && !job.running) makeVideo(job); });
+
 let retitleTimer = null;
 $('title').addEventListener('input', () => {              // a finished post takes a new title without repainting
   if (!job || job.running || !job.post) return;
@@ -645,7 +726,7 @@ $('title').addEventListener('input', () => {              // a finished post tak
   retitleTimer = setTimeout(async () => {
     const J = job, L = await layoutPost(J, J.post.L.picH);
     L.W = J.post.W; L.Hh = J.post.H; J.post.L = L;
-    await showPost(J); writeFormula(J, J.post.W, J.post.H);
+    await showPost(J); writeFormula(J, J.post.W, J.post.H); storeText(J);
   }, 500);
 });
 
