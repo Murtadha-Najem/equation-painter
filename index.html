@@ -299,7 +299,8 @@ function refreshLevelUI(){
   $('nTermsOut').textContent = $('nTerms').value; $('effortOut').textContent = $('effort').value + ' / 5';
   document.querySelectorAll('.lv small.t').forEach(el => { el.textContent = timeLabel(secondsFor(LEVELS[+el.closest('.lv').dataset.k])); });
   const lv = currentLevel();
-  $('est').innerHTML = '<b>' + lv.N + ' terms</b>, about ' + timeLabel(secondsFor(lv)).replace('~', '') + ' on this device';
+  const tl = timeLabel(secondsFor(lv));
+  $('est').innerHTML = '<b>' + lv.N + ' terms</b>, ' + (tl.startsWith('<') ? 'under 5 s' : 'about ' + tl.replace('~', '')) + ' on this device';
 }
 lvBox.addEventListener('change', refreshLevelUI);
 $('nTerms').addEventListener('input', refreshLevelUI);
