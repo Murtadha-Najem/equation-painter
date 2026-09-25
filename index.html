@@ -877,7 +877,7 @@ function compactParts(J, W, Hh){
 }
 function compactText(J, W, Hh){
   const m = J.model, half = Math.max(W, Hh)/2, out = [
-    '# ' + postTitle() + ' in ' + m.parts.length + ' Parts, ' + Compact.constants(m) + ' constants, painted by Equation Painter (murtadha203.github.io/equation-painter)',
+    '# ' + postTitle() + ' in ' + m.parts.length + ' Parts, ' + Compact.constants(m) + ' constants, painted by Equation Painter (murtadha-najem.github.io/equation-painter)',
     '# Each part j is one closed curve M_j with its own shading C_j, painted over what lies below it. Change anything.',
     'mode: pixel', 'size: ' + W + ' x ' + Hh, 'x = (m - ' + W/2 + ')/' + half, 'y = (' + Hh/2 + ' - n)/' + half,
     'u = (x + ' + m.xr + ')/' + fx(2*m.xr), 'w = (y + ' + m.yr + ')/' + fx(2*m.yr)];
@@ -905,7 +905,7 @@ function formulaText(J, W, Hh){
   if (J.style !== 'ellipses'){
     const {xr, yr} = inkFrame(J), lines = J.style === 'lines', f = v => String(Number(v.toFixed(4)));
     const out = [
-      '# ' + postTitle() + ' in ' + J.shapes.length + (lines ? ' Line Segments' : ' Circles') + ', drawn by Equation Painter (murtadha203.github.io/equation-painter)',
+      '# ' + postTitle() + ' in ' + J.shapes.length + (lines ? ' Line Segments' : ' Circles') + ', drawn by Equation Painter (murtadha-najem.github.io/equation-painter)',
       lines ? '# The k-th row gives the endpoints (X1, Y1) and (X2, Y2) of one black segment.' : '# The k-th row gives the centre (A, B) and radius R of one black circle.',
       '# Change the rule on the right of any line, the stroke, or any number, and see what happens.',
       'mode: ' + (lines ? 'segments' : 'circles'),
@@ -921,7 +921,7 @@ function formulaText(J, W, Hh){
   const half = Math.max(W, Hh)/2, f = v => String(Number(v.toFixed(4)));
   const pk = k => 'pick(v, ' + [0, 1, 2].map(c => f(J.bg[c][k]/80)).join(', ') + ')';
   const lines = [
-    '# ' + postTitle() + ' in ' + J.shapes.length + ' Ellipses, painted by Equation Painter (murtadha203.github.io/equation-painter)',
+    '# ' + postTitle() + ' in ' + J.shapes.length + ' Ellipses, painted by Equation Painter (murtadha-najem.github.io/equation-painter)',
     '# Each pixel (m, n) gets colour F(H) for v = 0, 1, 2 (red, green, blue). Each term paints its colour C over what is',
     '# below it wherever its mask M is 1, in the order of the table. Change any line or any number and see what happens.',
     'mode: layers',
