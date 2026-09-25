@@ -367,8 +367,9 @@ function parseProgram(text){
   const P = {mode: "pixel", size: [1200, 720], window: "auto", width: 0.6, alpha: 0.5, color: "#111111", defs: [], terms: null, kRange: null, x: null, y: null};
   const lines = text.split(/\r?\n/);
   for (let li = 0; li < lines.length; li++){
-    const ln = li + 1; let raw = lines[li].replace(/#.*$/, "").trim(); if (!raw) continue;
-    let m;
+    const ln = li + 1; let m;
+    if ((m = /^\s*color\s*:\s*(#[0-9a-f]{3,8})\s*(#.*)?$/i.exec(lines[li]))){ P.color = m[1]; continue; }   // before comments: a colour starts with #
+    let raw = lines[li].replace(/#.*$/, "").trim(); if (!raw) continue;
     if ((m = /^mode\s*:\s*(\w+)$/i.exec(raw))){ P.mode = m[1].toLowerCase(); if (!["pixel","circles","segments","layers"].includes(P.mode)) throw err(ln, "mode must be pixel, circles, segments or layers"); continue; }
     if ((m = /^size\s*:\s*(\d+)\s*[x×*]\s*(\d+)$/i.exec(raw))){ P.size = [+m[1], +m[2]]; continue; }
     if ((m = /^window\s*:\s*(.+)$/i.exec(raw))){ const v = m[1].trim(); if (v === "auto") P.window = "auto"; else { const a = v.split(/[\s,]+/).map(Number); if (a.length !== 4 || a.some(isNaN)) throw err(ln, "window needs xmin xmax ymin ymax, or auto"); P.window = a; } continue; }
